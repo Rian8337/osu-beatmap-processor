@@ -242,28 +242,30 @@ async function invalidateBeatmapCache(
     );
 }
 
-async function insertBeatmapsToDatabase(...beatmaps: DatabaseBeatmap[]) {
+export async function insertBeatmapsToDatabase(...beatmaps: DatabaseBeatmap[]) {
     // Build query to perform a single transaction with the database.
     const firstBeatmap = beatmaps[0];
     const beatmapKeys = Object.keys(firstBeatmap);
-    const insertValues: string[] = [];
 
-    for (let i = 0; i < beatmaps.length; ++i) {
-        const beatmap = beatmaps[i];
+    const client = await pool.connect();
 
-        insertValues.push(
-            Object.values(beatmap)
-                .map(
-                    (_, j) => `$${(i * beatmapKeys.length + j + 1).toString()}`,
-                )
-                .join(","),
-        );
+    try {
+        await client.query("BEGIN");
+
+        for (const beatmap of beatmaps) {
+            await client.query(
+                `INSERT INTO ${DatabaseTables.beatmap} (${beatmapKeys.join(",")}) VALUES (${beatmapKeys
+                    .map((_, i) => `$${(i + 1).toString()}`)
+                    .join(",")});`,
+                Object.values(beatmap),
+            );
+        }
+
+        await client.query("COMMIT");
+    } catch (e: unknown) {
+        console.error(e);
+        await client.query("ROLLBACK");
+    } finally {
+        client.release();
     }
-
-    await pool.query(
-        `INSERT INTO ${DatabaseTables.beatmap} (${beatmapKeys.join(",")}) VALUES ${insertValues.map((v) => `(${v})`).join(",")};`,
-        beatmaps.flatMap(
-            (b) => Object.values(b) as (string | number | Date | boolean)[],
-        ),
-    );
 }
