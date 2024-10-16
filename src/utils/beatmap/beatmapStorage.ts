@@ -157,7 +157,9 @@ export async function getBeatmapset(
             }
 
             cache.set(beatmap.beatmap_id, beatmap);
+
             databaseBeatmapIdCache.set(beatmap.beatmap_id, beatmap);
+            databaseBeatmapHashCache.set(beatmap.file_md5, beatmap);
         }
     }
 
