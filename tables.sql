@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS beatmap (
     max_combo int NOT NULL,
     storyboard boolean NOT NULL,
     video boolean NOT NULL,
-    download_available boolean NOT NULL,
+    download_unavailable boolean NOT NULL,
     audio_unavailable boolean NOT NULL,
     packs text,
     last_checked timestamp NOT NULL,
