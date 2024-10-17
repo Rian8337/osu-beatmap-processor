@@ -31,16 +31,18 @@ pool.connect()
         while (true) {
             await pool.query(`UPDATE ${tableName} SET id = $1;`, [id]);
 
-            const beatmaps = await getBeatmapsetFromOsuAPI(id++);
+            const beatmaps = await getBeatmapsetFromOsuAPI(id);
 
             await Utils.sleep(0.1);
 
-            if (beatmaps === null) {
-                console.log(`Beatmapset with ID ${id.toString()} not found.`);
+            if (beatmaps === null || beatmaps.length === 0) {
+                console.log(
+                    `Beatmapset with ID ${(id++).toString()} not found.`,
+                );
                 continue;
             }
 
-            console.log(`Beatmapset with ID ${id.toString()} found.`);
+            console.log(`Beatmapset with ID ${(id++).toString()} found.`);
 
             await insertBeatmapsToDatabase(
                 ...beatmaps
