@@ -5,7 +5,7 @@ import { pool } from "../../database/databasePool";
 import { DatabaseTables } from "../../database/DatabaseTables";
 import { MapInfo, RankedStatus } from "@rian8337/osu-base";
 import { convertMapInfoToDatabaseBeatmap } from "./beatmapConverter";
-import { getBeatmapsetFromOsuAPI } from "./beatmapService";
+import * as beatmapService from "./beatmapService";
 import { TimeConstrainedMap } from "../TimeConstrainedMap";
 import { homedir } from "os";
 
@@ -133,9 +133,9 @@ export async function getBeatmapset(
 
     // If still not found or invalid, request from osu! API.
     if (!cache) {
-        const apiBeatmaps = await getBeatmapsetFromOsuAPI(id).then((v) =>
-            v?.map((b) => MapInfo.from(b) as MapInfo<false>),
-        );
+        const apiBeatmaps = await beatmapService
+            .getBeatmapsetFromOsuAPI(id)
+            .then((v) => v?.map((b) => MapInfo.from(b) as MapInfo<false>));
 
         if (!apiBeatmaps) {
             return null;
@@ -185,15 +185,7 @@ export async function getBeatmapFile(id: number): Promise<string | null> {
     }
 
     // If there is not, request from osu! API.
-    beatmapFile = await fetch(`https://osu.ppy.sh/osu/${id.toString()}`)
-        .then((res) => {
-            if (!res.ok) {
-                return null;
-            }
-
-            return res.text();
-        })
-        .catch(() => null);
+    beatmapFile = await beatmapService.getBeatmapFile(id);
 
     if (!beatmapFile) {
         return null;
