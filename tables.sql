@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS beatmap (
     artist text NOT NULL,
     beatmap_id int NOT NULL,
     beatmapset_id int NOT NULL,
-    bpm int NOT NULL,
+    bpm real NOT NULL,
     creator text NOT NULL,
     creator_id int NOT NULL,
     difficultyrating float,
