@@ -36,13 +36,11 @@ pool.connect()
             await Utils.sleep(0.1);
 
             if (beatmaps === null || beatmaps.length === 0) {
-                console.log(
-                    `Beatmapset with ID ${(id++).toString()} not found.`,
-                );
+                console.log("Beatmapset with ID", id++, "not found.");
                 continue;
             }
 
-            console.log(`Beatmapset with ID ${(id++).toString()} found.`);
+            console.log("Beatmapset with ID", id++, "found.");
 
             await insertBeatmapsToDatabase(
                 ...beatmaps
