@@ -243,6 +243,10 @@ async function invalidateBeatmapCache(
 }
 
 export async function insertBeatmapsToDatabase(...beatmaps: DatabaseBeatmap[]) {
+    if (beatmaps.length === 0) {
+        return;
+    }
+
     // Build query to perform a single transaction with the database.
     const firstBeatmap = beatmaps[0];
     const beatmapKeys = Object.keys(firstBeatmap);
