@@ -3,6 +3,9 @@ import { getBeatmapsetFromOsuAPI } from "./utils/beatmap/beatmapService";
 import { insertBeatmapsToDatabase } from "./utils/beatmap/beatmapStorage";
 import { convertOsuAPIResponseToDatabaseBeatmap } from "./utils/beatmap/beatmapConverter";
 import { RankedStatus, Utils } from "@rian8337/osu-base";
+import { config } from "dotenv";
+
+config();
 
 const tableName = "populate";
 
