@@ -16,7 +16,7 @@ interface Populate {
 pool.connect()
     .then(async () => {
         let id = await pool
-            .query<Populate>(`SELECT * FROM ${tableName} WHERE id = 1;`)
+            .query<Populate>(`SELECT * FROM ${tableName};`)
             .then((res) => res.rows.at(0)?.id ?? null);
 
         if (id === null) {
