@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS beatmap (
     file_md5 varchar(32) NOT NULL,
     tags text NOT NULL,
     favourite_count int NOT NULL,
+    rating real NOT NULL,
     playcount int NOT NULL,
     passcount int NOT NULL,
     count_normal int NOT NULL,
