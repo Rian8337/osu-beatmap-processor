@@ -1,21 +1,43 @@
 import { Router } from "express";
 import asyncHandler from "express-async-handler";
-import { getBeatmapFile } from "../utils/beatmap/beatmapStorage";
+import { getBeatmap, getBeatmapFile } from "../utils/beatmap/beatmapStorage";
 
 const router = Router();
 
-router.get<"/", unknown, { error?: string }, unknown, Partial<{ id: string }>>(
+router.get<
+    "/",
+    unknown,
+    { error?: string },
+    unknown,
+    Partial<{ id: string; hash: string }>
+>(
     "/",
     asyncHandler(async (req, res) => {
-        const { id } = req.query;
+        const { id, hash } = req.query;
 
-        if (!id) {
+        if (!id && !hash) {
             return void res.status(400).json({
                 error: "Missing id query parameter",
             });
         }
 
-        const beatmapFile = await getBeatmapFile(parseInt(id));
+        let beatmapId: number;
+
+        if (id) {
+            beatmapId = parseInt(id);
+        } else {
+            const beatmap = await getBeatmap(hash!);
+
+            if (!beatmap) {
+                return void res.status(404).json({
+                    error: "Beatmap not found",
+                });
+            }
+
+            beatmapId = beatmap.beatmap_id;
+        }
+
+        const beatmapFile = await getBeatmapFile(beatmapId);
 
         if (!beatmapFile) {
             return void res.status(404).json({
@@ -23,7 +45,7 @@ router.get<"/", unknown, { error?: string }, unknown, Partial<{ id: string }>>(
             });
         }
 
-        res.download(beatmapFile, `${id}.osu`);
+        res.download(beatmapFile, `${beatmapId.toString()}.osu`);
     }),
 );
 
