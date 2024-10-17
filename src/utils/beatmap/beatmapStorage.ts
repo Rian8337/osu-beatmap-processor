@@ -125,6 +125,12 @@ export async function getBeatmap(
     return cache;
 }
 
+/**
+ * Gets a beatmapset from the beatmap cache, or requests the osu! API it if it's not available.
+ *
+ * @param id The beatmapset ID.
+ * @returns A `Map` instance representing the beatmapset.
+ */
 export async function getBeatmapset(
     id: number,
 ): Promise<Map<number, DatabaseBeatmap> | null> {
@@ -197,7 +203,46 @@ export async function getBeatmapFile(id: number): Promise<string | null> {
     return beatmapFile;
 }
 
-function getBeatmapFromDatabase(
+/**
+ * Updates the maximum combo of a beatmap.
+ *
+ * This is used in place of the osu! API for setting the maximum combo
+ * of a beatmap in case the API returns `null`.
+ *
+ * @param id The ID of the beatmap.
+ * @param maxCombo The maximum combo of the beatmap.
+ * @returns
+ */
+export async function updateBeatmapMaxCombo(
+    id: number,
+    maxCombo: number,
+): Promise<boolean> {
+    const cache = databaseBeatmapIdCache.get(id);
+
+    if (cache) {
+        cache.max_combo = maxCombo;
+    }
+
+    return pool
+        .query(
+            `UPDATE ${DatabaseTables.beatmap} SET max_combo = $1 WHERE id = $2;`,
+            [maxCombo, id],
+        )
+        .then(() => true)
+        .catch((e: unknown) => {
+            console.error("Error when updating beatmap maximum combo:", e);
+
+            return false;
+        });
+}
+
+/**
+ * Obtains a beatmap from the database.
+ *
+ * @param beatmapIdOrHash The ID or MD5 hash of the beatmap.
+ * @returns The beatmap, `null` if the beatmap is not found.
+ */
+export function getBeatmapFromDatabase(
     beatmapIdOrHash: number | string,
 ): Promise<DatabaseBeatmap | null> {
     return pool

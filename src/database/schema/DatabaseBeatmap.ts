@@ -182,9 +182,9 @@ export interface DatabaseBeatmap {
     /**
      * The maximum combo of the beatmap.
      *
-     * Will be `null` if the beatmap is unranked.
+     * May be `null` if the beatmap is unranked.
      */
-    readonly max_combo: number | null;
+    max_combo: number | null;
 
     /**
      * Whether the beatmap has a storyboard.

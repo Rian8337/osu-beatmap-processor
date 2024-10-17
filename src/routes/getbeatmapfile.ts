@@ -1,7 +1,14 @@
 import { Router } from "express";
 import asyncHandler from "express-async-handler";
-import { getBeatmap, getBeatmapFile } from "../utils/beatmap/beatmapStorage";
+import {
+    getBeatmap,
+    getBeatmapFile,
+    getBeatmapFromDatabase,
+    updateBeatmapMaxCombo,
+} from "../utils/beatmap/beatmapStorage";
 import { validateGETInternalKey } from "../utils/security";
+import { DatabaseBeatmap } from "../database/schema/DatabaseBeatmap";
+import { BeatmapDecoder } from "@rian8337/osu-base";
 
 const router = Router();
 
@@ -23,12 +30,13 @@ router.get<
             });
         }
 
+        let beatmap: DatabaseBeatmap | null = null;
         let beatmapId: number;
 
         if (id) {
             beatmapId = parseInt(id);
         } else {
-            const beatmap = await getBeatmap(hash!);
+            beatmap = await getBeatmap(hash!);
 
             if (!beatmap) {
                 return void res.status(404).json({
@@ -48,6 +56,17 @@ router.get<
         }
 
         res.download(beatmapFile, `${beatmapId.toString()}.osu`);
+
+        // Attempt to update max combo in case osu! API returned a null max combo.
+        beatmap ??= await getBeatmapFromDatabase(beatmapId);
+
+        if (beatmap && beatmap.max_combo === null) {
+            const parsedBeatmap = new BeatmapDecoder().decode(
+                beatmapFile,
+            ).result;
+
+            await updateBeatmapMaxCombo(beatmapId, parsedBeatmap.maxCombo);
+        }
     }),
 );
 
