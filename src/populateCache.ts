@@ -2,7 +2,7 @@ import { pool } from "./database/databasePool";
 import { getBeatmapsetFromOsuAPI } from "./utils/beatmap/beatmapService";
 import { insertBeatmapsToDatabase } from "./utils/beatmap/beatmapStorage";
 import { convertOsuAPIResponseToDatabaseBeatmap } from "./utils/beatmap/beatmapConverter";
-import { RankedStatus } from "@rian8337/osu-base";
+import { RankedStatus, Utils } from "@rian8337/osu-base";
 
 const tableName = "populate";
 
@@ -28,12 +28,12 @@ pool.connect()
         while (true) {
             await pool.query(`UPDATE ${tableName} SET id = $1;`, [id]);
 
-            const beatmaps = await getBeatmapsetFromOsuAPI(id);
+            const beatmaps = await getBeatmapsetFromOsuAPI(id++);
+
+            await Utils.sleep(0.1);
 
             if (beatmaps === null) {
-                console.log(
-                    `Beatmapset with ID ${(id++).toString()} not found.`,
-                );
+                console.log(`Beatmapset with ID ${id.toString()} not found.`);
                 continue;
             }
 
