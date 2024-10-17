@@ -1,6 +1,7 @@
 import { Router } from "express";
 import asyncHandler from "express-async-handler";
 import { getBeatmap, getBeatmapFile } from "../utils/beatmap/beatmapStorage";
+import { validateGETInternalKey } from "../utils/security";
 
 const router = Router();
 
@@ -9,9 +10,10 @@ router.get<
     unknown,
     { error?: string },
     unknown,
-    Partial<{ id: string; hash: string }>
+    Partial<{ key: string; id: string; hash: string }>
 >(
     "/",
+    validateGETInternalKey,
     asyncHandler(async (req, res) => {
         const { id, hash } = req.query;
 

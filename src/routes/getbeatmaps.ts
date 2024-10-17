@@ -3,17 +3,19 @@ import { OsuAPIResponse } from "@rian8337/osu-base";
 import asyncHandler from "express-async-handler";
 import { getBeatmapset } from "../utils/beatmap/beatmapStorage";
 import { convertDatabaseBeatmapToOsuAPIResponse } from "../utils/beatmap/beatmapConverter";
+import { validateGETInternalKey } from "../utils/security";
 
 const router = Router();
 
 router.get<
     "/",
     unknown,
-    { error: string } | OsuAPIResponse[],
+    { error?: string } | OsuAPIResponse[],
     unknown,
-    Partial<{ id: string }>
+    Partial<{ key: string; id: string }>
 >(
     "/",
+    validateGETInternalKey,
     asyncHandler(async (req, res) => {
         const { id } = req.query;
 

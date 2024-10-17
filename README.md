@@ -19,6 +19,7 @@ POSTGRES_USERNAME= # PostgreSQL username
 POSTGRES_PASSWORD= # PostgreSQL password
 EXPRESS_PORT= # Port for Express server
 OSU_API_KEY= # osu! APIv1 key
+INTERNAL_SERVER_KEY= # Internal server key, if needed
 ```
 
 ### Setup Node.js dependencies

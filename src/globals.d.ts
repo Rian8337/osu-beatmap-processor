@@ -36,5 +36,10 @@ namespace NodeJS {
          * The API key for the osu! APIv1.
          */
         readonly OSU_API_KEY?: string;
+
+        /**
+         * The internal server key.
+         */
+        readonly INTERNAL_SERVER_KEY?: string;
     }
 }
