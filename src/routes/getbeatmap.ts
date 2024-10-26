@@ -25,7 +25,9 @@ router.get<
             });
         }
 
-        const beatmap = await getBeatmap(id ?? hash!);
+        const beatmap = await getBeatmap(
+            id !== undefined ? parseInt(id) : hash!,
+        );
 
         if (!beatmap) {
             // If the beatmap is not found, request the osu! API.
