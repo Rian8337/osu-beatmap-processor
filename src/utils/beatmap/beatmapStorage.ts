@@ -139,21 +139,28 @@ export async function getBeatmapset(
 
     // If still not found or invalid, request from osu! API.
     if (!cache) {
-        const apiBeatmaps = await beatmapService
-            .getBeatmapsetFromOsuAPI(id)
-            .then((v) => v?.map((b) => MapInfo.from(b) as MapInfo<false>));
+        const apiBeatmaps = await beatmapService.getBeatmapsetFromOsuAPI(id);
 
         if (!apiBeatmaps) {
             return null;
         }
 
         cache = new Map<number, DatabaseBeatmap>();
-        const databaseBeatmaps = apiBeatmaps.map((v) =>
-            convertMapInfoToDatabaseBeatmap(v),
-        );
+
+        for (const apiBeatmap of apiBeatmaps) {
+            if (apiBeatmap.mode !== "0") {
+                continue;
+            }
+
+            const databaseBeatmap = convertMapInfoToDatabaseBeatmap(
+                MapInfo.from(apiBeatmap),
+            );
+
+            cache.set(databaseBeatmap.beatmap_id, databaseBeatmap);
+        }
 
         // Check the validity of per-beatmap cache.
-        for (const beatmap of databaseBeatmaps) {
+        for (const beatmap of cache.values()) {
             const oldBeatmap =
                 databaseBeatmapIdCache.get(beatmap.beatmap_id) ??
                 (await getBeatmapFromDatabase(beatmap.beatmap_id));
@@ -161,8 +168,6 @@ export async function getBeatmapset(
             if (oldBeatmap && oldBeatmap.file_md5 !== beatmap.file_md5) {
                 await invalidateBeatmapCache(oldBeatmap.file_md5, beatmap);
             }
-
-            cache.set(beatmap.beatmap_id, beatmap);
 
             databaseBeatmapIdCache.set(beatmap.beatmap_id, beatmap);
             databaseBeatmapHashCache.set(beatmap.file_md5, beatmap);
