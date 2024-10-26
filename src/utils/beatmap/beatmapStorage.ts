@@ -37,7 +37,7 @@ const beatmapSetIdCache = new TimeConstrainedMap<
  *
  * @param beatmapIdOrHash The beatmap ID or MD5 hash of the beatmap.
  * @param options Options for the retrieval of the beatmap.
- * @returns A `MapInfo` instance representing the beatmap.
+ * @returns The beatmap, `null` if the beatmap is not found.
  */
 export async function getBeatmap(
     beatmapIdOrHash: number | string,
