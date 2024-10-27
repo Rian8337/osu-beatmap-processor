@@ -66,7 +66,6 @@ router.get<
         res.setHeader("Content-Type", "text/plain");
 
         readStream.pipe(res);
-        res.end();
 
         // Attempt to update max combo in case osu! API returned a null max combo.
         beatmap ??= await getBeatmapFromDatabase(beatmapId);
