@@ -9,13 +9,14 @@ import {
 import { validateGETInternalKey } from "../utils/security";
 import { DatabaseBeatmap } from "../database/schema/DatabaseBeatmap";
 import { BeatmapDecoder } from "@rian8337/osu-base";
+import { PassThrough } from "stream";
 
 const router = Router();
 
 router.get<
     "/",
     unknown,
-    { error?: string },
+    { error?: string } | Buffer,
     unknown,
     Partial<{ key: string; id: string; hash: string }>
 >(
@@ -55,14 +56,24 @@ router.get<
             });
         }
 
-        res.download(beatmapFile, `${beatmapId.toString()}.osu`);
+        const readStream = new PassThrough();
+        readStream.end(beatmapFile);
+
+        res.setHeader(
+            "Content-Disposition",
+            "attachment; filename=" + `${beatmapId.toString()}.osu`,
+        );
+        res.setHeader("Content-Type", "text/plain");
+
+        readStream.pipe(res);
+        res.end();
 
         // Attempt to update max combo in case osu! API returned a null max combo.
         beatmap ??= await getBeatmapFromDatabase(beatmapId);
 
         if (beatmap && beatmap.max_combo === null) {
             const parsedBeatmap = new BeatmapDecoder().decode(
-                beatmapFile,
+                beatmapFile.toString(),
             ).result;
 
             await updateBeatmapMaxCombo(beatmapId, parsedBeatmap.maxCombo);

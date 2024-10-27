@@ -183,13 +183,11 @@ export async function getBeatmapset(
  * @param id The ID of the beatmap.
  * @returns The beatmap file, `null` if the beatmap file cannot be downloaded.
  */
-export async function getBeatmapFile(id: number): Promise<string | null> {
+export async function getBeatmapFile(id: number): Promise<Buffer | null> {
     const beatmapFilePath = join(beatmapFileDirectory, `${id.toString()}.osu`);
 
     // Check existing file first.
-    let beatmapFile = await readFile(beatmapFilePath, "utf-8").catch(
-        () => null,
-    );
+    let beatmapFile = await readFile(beatmapFilePath).catch(() => null);
 
     if (beatmapFile) {
         return beatmapFile;
