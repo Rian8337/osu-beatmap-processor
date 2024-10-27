@@ -106,12 +106,12 @@ export async function getBeatmap(
                 cache.approved = apiBeatmap.approved;
 
                 await pool.query(
-                    `UPDATE ${DatabaseTables.beatmap} SET last_checked = $1, approved = $2 WHERE id = $3;`,
+                    `UPDATE ${DatabaseTables.beatmap} SET last_checked = $1, approved = $2 WHERE beatmap_id = $3;`,
                     [cache.last_checked, cache.approved, cache.beatmap_id],
                 );
             } else {
                 await pool.query(
-                    `UPDATE ${DatabaseTables.beatmap} SET last_checked = $1 WHERE id = $2;`,
+                    `UPDATE ${DatabaseTables.beatmap} SET last_checked = $1 WHERE beatmap_id = $2;`,
                     [cache.last_checked, cache.beatmap_id],
                 );
             }
@@ -228,7 +228,7 @@ export async function updateBeatmapMaxCombo(
 
     return pool
         .query(
-            `UPDATE ${DatabaseTables.beatmap} SET max_combo = $1 WHERE id = $2;`,
+            `UPDATE ${DatabaseTables.beatmap} SET max_combo = $1 WHERE beatmap_id = $2;`,
             [maxCombo, id],
         )
         .then(() => true)
@@ -277,7 +277,7 @@ async function invalidateBeatmapCache(
 
     // Delete the cache from the database.
     await pool.query<DatabaseBeatmap>(
-        `DELETE FROM ${DatabaseTables.beatmap} WHERE id = $1;`,
+        `DELETE FROM ${DatabaseTables.beatmap} WHERE beatmap_id = $1;`,
         [newCache.beatmap_id],
     );
 }
