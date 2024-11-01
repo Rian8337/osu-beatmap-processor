@@ -42,8 +42,14 @@ const beatmapSetIdCache = new TimeConstrainedMap<
 export async function getBeatmap(
     beatmapIdOrHash: number | string,
 ): Promise<DatabaseBeatmap | null> {
+    // Get cache from in-memory cache.
+    let cache =
+        (typeof beatmapIdOrHash === "number"
+            ? databaseBeatmapIdCache.get(beatmapIdOrHash)
+            : databaseBeatmapHashCache.get(beatmapIdOrHash)) ?? null;
+
     // Get cache from database.
-    let cache = await getBeatmapFromDatabase(beatmapIdOrHash);
+    cache ??= await getBeatmapFromDatabase(beatmapIdOrHash);
 
     // If not found, request from osu! API.
     if (!cache) {
