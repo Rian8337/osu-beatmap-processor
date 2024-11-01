@@ -107,20 +107,12 @@ export async function getBeatmap(
         } else {
             // Update the last checked date.
             cache.last_checked = new Date();
+            cache.approved = apiBeatmap.approved;
 
-            if (apiBeatmap.approved !== cache.approved) {
-                cache.approved = apiBeatmap.approved;
-
-                await pool.query(
-                    `UPDATE ${DatabaseTables.beatmap} SET last_checked = $1, approved = $2 WHERE beatmap_id = $3;`,
-                    [cache.last_checked, cache.approved, cache.beatmap_id],
-                );
-            } else {
-                await pool.query(
-                    `UPDATE ${DatabaseTables.beatmap} SET last_checked = $1 WHERE beatmap_id = $2;`,
-                    [cache.last_checked, cache.beatmap_id],
-                );
-            }
+            await pool.query(
+                `UPDATE ${DatabaseTables.beatmap} SET last_checked = $1, approved = $2 WHERE beatmap_id = $3;`,
+                [cache.last_checked, cache.approved, cache.beatmap_id],
+            );
         }
     }
 
@@ -278,7 +270,7 @@ async function invalidateBeatmapCache(
 
     // Delete the beatmap file.
     await unlink(
-        join("beatmaps", `${newCache.beatmap_id.toString()}.osu`),
+        join(beatmapFileDirectory, `${newCache.beatmap_id.toString()}.osu`),
     ).catch(() => null);
 
     // Delete the cache from the database.
