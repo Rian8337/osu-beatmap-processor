@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS beatmap (
     count_normal int NOT NULL,
     count_slider int NOT NULL,
     count_spinner int NOT NULL,
-    max_combo int NOT NULL,
+    max_combo int,
     storyboard boolean NOT NULL,
     video boolean NOT NULL,
     download_unavailable boolean NOT NULL,
