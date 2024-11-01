@@ -22,12 +22,10 @@ const convertOsuAPIResponseDate = (str: string): Date => {
  * Converts a `MapInfo` instance into a beatmap object that can be inserted into the database.
  *
  * @param mapinfo The `MapInfo` instance to convert.
- * @param dateChecked The date the beatmap was last checked. Defaults to the current date.
  * @returns The converted beatmap object.
  */
 export function convertMapInfoToDatabaseBeatmap(
     mapinfo: MapInfo<false>,
-    dateChecked = new Date(),
 ): DatabaseBeatmap {
     return {
         approved: mapinfo.approved,
@@ -55,7 +53,7 @@ export function convertMapInfoToDatabaseBeatmap(
         genre_id: mapinfo.genre,
         hit_length: mapinfo.hitLength,
         language_id: mapinfo.language,
-        last_checked: dateChecked,
+        last_checked: new Date(),
         last_update: mapinfo.lastUpdate,
         max_combo: mapinfo.maxCombo,
         packs: mapinfo.packs.join(" "),
