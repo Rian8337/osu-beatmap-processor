@@ -8,6 +8,7 @@ import { convertMapInfoToDatabaseBeatmap } from "./beatmapConverter";
 import * as beatmapService from "./beatmapService";
 import { TimeConstrainedMap } from "../TimeConstrainedMap";
 import { homedir } from "os";
+import { computeMD5 } from "../util";
 
 const beatmapFileDirectory = join(
     homedir(),
@@ -179,13 +180,29 @@ export async function getBeatmapset(
  * Gets the beatmap file of a beatmap.
  *
  * @param id The ID of the beatmap.
+ * @param hashComparison The MD5 hash of the beatmap file to compare with the existing one.
+ * If this is provided and the hash matches, the existing file will be returned, else the file will be re-downloaded.
  * @returns The beatmap file, `null` if the beatmap file cannot be downloaded.
  */
-export async function getBeatmapFile(id: number): Promise<Buffer | null> {
+export async function getBeatmapFile(
+    id: number,
+    hashComparison?: string,
+): Promise<Buffer | null> {
     const beatmapFilePath = join(beatmapFileDirectory, `${id.toString()}.osu`);
 
     // Check existing file first.
     let beatmapFile = await readFile(beatmapFilePath).catch(() => null);
+
+    if (
+        beatmapFile &&
+        hashComparison !== undefined &&
+        hashComparison !== computeMD5(beatmapFile)
+    ) {
+        // Hash is not the same - invalidate beatmap file.
+        await invalidateBeatmapFile(id);
+
+        beatmapFile = null;
+    }
 
     if (beatmapFile) {
         return beatmapFile;
@@ -269,14 +286,18 @@ async function invalidateBeatmapCache(
     databaseBeatmapHashCache.delete(oldHash);
 
     // Delete the beatmap file.
-    await unlink(
-        join(beatmapFileDirectory, `${newCache.beatmap_id.toString()}.osu`),
-    ).catch(() => null);
+    await invalidateBeatmapFile(newCache.beatmap_id);
 
     // Delete the cache from the database.
     await pool.query<DatabaseBeatmap>(
         `DELETE FROM ${DatabaseTables.beatmap} WHERE beatmap_id = $1;`,
         [newCache.beatmap_id],
+    );
+}
+
+async function invalidateBeatmapFile(id: number) {
+    await unlink(join(beatmapFileDirectory, `${id.toString()}.osu`)).catch(
+        () => null,
     );
 }
 

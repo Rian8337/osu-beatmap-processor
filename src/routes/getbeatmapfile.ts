@@ -48,7 +48,7 @@ router.get<
             beatmapId = beatmap.beatmap_id;
         }
 
-        const beatmapFile = await getBeatmapFile(beatmapId);
+        const beatmapFile = await getBeatmapFile(beatmapId, beatmap?.file_md5);
 
         if (!beatmapFile) {
             return void res.status(404).json({
