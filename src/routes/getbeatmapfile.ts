@@ -48,6 +48,8 @@ router.get<
             beatmapId = beatmap.beatmap_id;
         }
 
+        beatmap ??= await getBeatmapFromDatabase(beatmapId);
+
         const beatmapFile = await getBeatmapFile(beatmapId, beatmap?.file_md5);
 
         if (!beatmapFile) {
@@ -68,8 +70,6 @@ router.get<
         readStream.pipe(res);
 
         // Attempt to update max combo in case osu! API returned a null max combo.
-        beatmap ??= await getBeatmapFromDatabase(beatmapId);
-
         if (beatmap && beatmap.max_combo === null) {
             const parsedBeatmap = new BeatmapDecoder().decode(
                 beatmapFile.toString(),
