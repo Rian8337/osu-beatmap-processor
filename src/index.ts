@@ -4,8 +4,11 @@ import cors from "cors";
 import getBeatmap from "./routes/getbeatmap";
 import getBeatmapFile from "./routes/getbeatmapfile";
 import getBeatmaps from "./routes/getbeatmaps";
+import { OsuAPIRequestBuilder } from "@rian8337/osu-base";
 
 config();
+
+OsuAPIRequestBuilder.setAPIKey(process.env.OSU_API_KEY!);
 
 const baseRouter = Router()
     .use("/getbeatmap", getBeatmap)
