@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS beatmap (
     diff_approach real NOT NULL,
     diff_drain real NOT NULL,
     hit_length int NOT NULL,
-    source text,
+    source text NOT NULL,
     genre_id int NOT NULL,
     language_id int NOT NULL,
     title text NOT NULL,

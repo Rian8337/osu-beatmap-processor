@@ -1,58 +1,46 @@
-import { pool } from "./database/databasePool";
+import "dotenv/config";
 import { getBeatmapsetFromOsuAPI } from "./utils/beatmap/beatmapService";
 import { insertBeatmapsToDatabase } from "./utils/beatmap/beatmapStorage";
 import { convertOsuAPIResponseToDatabaseBeatmap } from "./utils/beatmap/beatmapConverter";
 import { RankedStatus, Utils } from "@rian8337/osu-base";
-import { config } from "dotenv";
+import { db } from "./database";
+import { populateTable } from "./database/schema";
 
-config();
+void (async () => {
+    let id = await db
+        .select()
+        .from(populateTable)
+        .limit(1)
+        .then((res) => res.at(0)?.id ?? null);
 
-const tableName = "populate";
+    if (id === null) {
+        id = 1;
 
-interface Populate {
-    readonly id: number;
-}
+        await db.insert(populateTable).values({ id });
+    }
 
-pool.connect()
-    .then(async () => {
-        let id = await pool
-            .query<Populate>(`SELECT * FROM ${tableName};`)
-            .then((res) => res.rows.at(0)?.id ?? null);
+    while (id <= 5000000) {
+        await db.update(populateTable).set({ id });
 
-        if (id === null) {
-            id = 1;
+        const beatmaps = await getBeatmapsetFromOsuAPI(id);
 
-            await pool.query(`INSERT INTO ${tableName} (id) VALUES ($1);`, [
-                id,
-            ]);
+        await Utils.sleep(0.1);
+
+        if (beatmaps === null || beatmaps.length === 0) {
+            console.log("Beatmapset with ID", id++, "not found.");
+            continue;
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition, no-constant-condition
-        while (true) {
-            await pool.query(`UPDATE ${tableName} SET id = $1;`, [id]);
+        console.log("Beatmapset with ID", id++, "found.");
 
-            const beatmaps = await getBeatmapsetFromOsuAPI(id);
-
-            await Utils.sleep(0.1);
-
-            if (beatmaps === null || beatmaps.length === 0) {
-                console.log("Beatmapset with ID", id++, "not found.");
-                continue;
-            }
-
-            console.log("Beatmapset with ID", id++, "found.");
-
-            await insertBeatmapsToDatabase(
-                ...beatmaps
-                    .map(convertOsuAPIResponseToDatabaseBeatmap)
-                    .filter(
-                        (v) =>
-                            v.approved === RankedStatus.ranked ||
-                            v.approved === RankedStatus.approved,
-                    ),
-            );
-        }
-    })
-    .catch((e: unknown) => {
-        console.error(e);
-    });
+        await insertBeatmapsToDatabase(
+            ...beatmaps
+                .map(convertOsuAPIResponseToDatabaseBeatmap)
+                .filter(
+                    (v) =>
+                        v.approved === RankedStatus.ranked ||
+                        v.approved === RankedStatus.approved,
+                ),
+        );
+    }
+})();

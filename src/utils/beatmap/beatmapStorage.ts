@@ -1,14 +1,15 @@
-import { readFile, unlink, writeFile } from "fs/promises";
-import { join } from "path";
-import { DatabaseBeatmap } from "../../database/schema/DatabaseBeatmap";
-import { pool } from "../../database/databasePool";
-import { DatabaseTables } from "../../database/DatabaseTables";
 import { MapInfo, RankedStatus } from "@rian8337/osu-base";
+import { eq } from "drizzle-orm";
+import { readFile, unlink, writeFile } from "fs/promises";
+import { homedir } from "os";
+import { join } from "path";
+import { db } from "../../database";
+import { beatmapTable } from "../../database/schema";
+import { DatabaseBeatmap } from "../../database/schema/DatabaseBeatmap";
+import { TimeConstrainedMap } from "../TimeConstrainedMap";
+import { computeMD5 } from "../util";
 import { convertMapInfoToDatabaseBeatmap } from "./beatmapConverter";
 import * as beatmapService from "./beatmapService";
-import { TimeConstrainedMap } from "../TimeConstrainedMap";
-import { homedir } from "os";
-import { computeMD5 } from "../util";
 
 const beatmapFileDirectory = join(
     homedir(),
@@ -110,10 +111,16 @@ export async function getBeatmap(
             cache.last_checked = new Date();
             cache.approved = apiBeatmap.approved;
 
-            await pool.query(
-                `UPDATE ${DatabaseTables.beatmap} SET last_checked = $1, approved = $2 WHERE beatmap_id = $3;`,
-                [cache.last_checked, cache.approved, cache.beatmap_id],
-            );
+            await db
+                .update(beatmapTable)
+                .set({
+                    last_checked: cache.last_checked,
+                    approved: cache.approved,
+                })
+                .where(eq(beatmapTable.beatmap_id, cache.beatmap_id))
+                .catch((e: unknown) => {
+                    console.error("Error when updating beatmap status:", e);
+                });
         }
     }
 
@@ -241,15 +248,13 @@ export async function updateBeatmapMaxCombo(
         cache.max_combo = maxCombo;
     }
 
-    return pool
-        .query(
-            `UPDATE ${DatabaseTables.beatmap} SET max_combo = $1 WHERE beatmap_id = $2;`,
-            [maxCombo, id],
-        )
+    return db
+        .update(beatmapTable)
+        .set({ max_combo: maxCombo })
+        .where(eq(beatmapTable.beatmap_id, id))
         .then(() => true)
         .catch((e: unknown) => {
             console.error("Error when updating beatmap maximum combo:", e);
-
             return false;
         });
 }
@@ -263,16 +268,17 @@ export async function updateBeatmapMaxCombo(
 export function getBeatmapFromDatabase(
     beatmapIdOrHash: number | string,
 ): Promise<DatabaseBeatmap | null> {
-    return pool
-        .query<DatabaseBeatmap>(
-            `SELECT * FROM ${DatabaseTables.beatmap} WHERE ${
-                typeof beatmapIdOrHash === "number" ? "beatmap_id" : "file_md5"
-            } = $1;`,
-            [beatmapIdOrHash],
+    return db
+        .select()
+        .from(beatmapTable)
+        .where(
+            typeof beatmapIdOrHash === "number"
+                ? eq(beatmapTable.beatmap_id, beatmapIdOrHash)
+                : eq(beatmapTable.file_md5, beatmapIdOrHash),
         )
-        .then((res) => res.rows.at(0) ?? null)
+        .then((res) => res.at(0) ?? null)
         .catch((e: unknown) => {
-            console.error(e);
+            console.error("Error when getting beatmap from database:", e);
 
             return null;
         });
@@ -288,11 +294,9 @@ async function invalidateBeatmapCache(
     // Delete the beatmap file.
     await invalidateBeatmapFile(newCache.beatmap_id);
 
-    // Delete the cache from the database.
-    await pool.query<DatabaseBeatmap>(
-        `DELETE FROM ${DatabaseTables.beatmap} WHERE beatmap_id = $1;`,
-        [newCache.beatmap_id],
-    );
+    await db
+        .delete(beatmapTable)
+        .where(eq(beatmapTable.beatmap_id, newCache.beatmap_id));
 }
 
 async function invalidateBeatmapFile(id: number) {
@@ -306,29 +310,10 @@ export async function insertBeatmapsToDatabase(...beatmaps: DatabaseBeatmap[]) {
         return;
     }
 
-    // Build query to perform a single transaction with the database.
-    const firstBeatmap = beatmaps[0];
-    const beatmapKeys = Object.keys(firstBeatmap);
-
-    const client = await pool.connect();
-
-    try {
-        await client.query("BEGIN");
-
-        for (const beatmap of beatmaps) {
-            await client.query(
-                `INSERT INTO ${DatabaseTables.beatmap} (${beatmapKeys.join(",")}) VALUES (${beatmapKeys
-                    .map((_, i) => `$${(i + 1).toString()}`)
-                    .join(",")});`,
-                Object.values(beatmap),
-            );
-        }
-
-        await client.query("COMMIT");
-    } catch (e: unknown) {
-        console.error(e);
-        await client.query("ROLLBACK");
-    } finally {
-        client.release();
-    }
+    await db
+        .insert(beatmapTable)
+        .values(beatmaps)
+        .catch((e: unknown) => {
+            console.error("Error when inserting beatmaps:", e);
+        });
 }
