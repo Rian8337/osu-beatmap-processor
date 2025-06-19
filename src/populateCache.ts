@@ -19,7 +19,7 @@ void (async () => {
         await db.insert(populateTable).values({ id });
     }
 
-    while (id <= 5000000) {
+    while (id <= 2500000) {
         await db.update(populateTable).set({ id });
 
         const beatmaps = await getBeatmapsetFromOsuAPI(id);
