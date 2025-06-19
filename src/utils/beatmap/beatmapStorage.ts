@@ -15,7 +15,7 @@ const beatmapFileDirectory = join(
     homedir(),
     "..",
     "..",
-    "data",
+    "hdd",
     "osudroid",
     "beatmaps",
 );
