@@ -198,7 +198,9 @@ export async function getBeatmapFile(
     const beatmapFilePath = join(beatmapFileDirectory, `${id.toString()}.osu`);
 
     // Check existing file first.
-    let beatmapFile = await readFile(beatmapFilePath).catch(() => null);
+    let beatmapFile: Buffer | null = await readFile(beatmapFilePath).catch(
+        () => null,
+    );
 
     if (
         beatmapFile &&
