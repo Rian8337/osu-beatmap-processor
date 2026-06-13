@@ -38,8 +38,8 @@ void (async () => {
                 .map(convertOsuAPIResponseToDatabaseBeatmap)
                 .filter(
                     (v) =>
-                        v.approved === RankedStatus.ranked ||
-                        v.approved === RankedStatus.approved,
+                        v.approved === RankedStatus.Ranked ||
+                        v.approved === RankedStatus.Approved,
                 ),
         );
     }

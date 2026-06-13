@@ -11,14 +11,7 @@ import { computeMD5 } from "../util";
 import { convertMapInfoToDatabaseBeatmap } from "./beatmapConverter";
 import * as beatmapService from "./beatmapService";
 
-const beatmapFileDirectory = join(
-    homedir(),
-    "..",
-    "..",
-    "hdd",
-    "osudroid",
-    "beatmaps",
-);
+const beatmapFileDirectory = join(process.cwd(), "beatmaps");
 
 const databaseBeatmapIdCache = new TimeConstrainedMap<number, DatabaseBeatmap>(
     900,
@@ -84,8 +77,8 @@ export async function getBeatmap(
 
     // For unranked beatmaps, check the status if 15 minutes have passed since the last check.
     if (
-        cache.approved !== RankedStatus.ranked &&
-        cache.approved !== RankedStatus.approved &&
+        cache.approved !== RankedStatus.Ranked &&
+        cache.approved !== RankedStatus.Approved &&
         cache.last_checked < new Date(Date.now() - 900000)
     ) {
         const apiBeatmap = await MapInfo.getInformation(
@@ -198,9 +191,13 @@ export async function getBeatmapFile(
     const beatmapFilePath = join(beatmapFileDirectory, `${id.toString()}.osu`);
 
     // Check existing file first.
-    let beatmapFile: Buffer | null = await readFile(beatmapFilePath).catch(
-        () => null,
-    );
+    let beatmapFile: Buffer | null = null;
+
+    try {
+        beatmapFile = await readFile(beatmapFilePath);
+    } catch {
+        // File does not exist, will be downloaded later.
+    }
 
     if (
         beatmapFile &&
