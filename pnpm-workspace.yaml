@@ -2,7 +2,7 @@ allowBuilds:
   esbuild: true
   libpq: true
 minimumReleaseAgeExclude:
-  - '@rian8337/osu-base@4.0.0-beta.91'
+  - '@rian8337/osu-base@4.0.0-beta.96'
 onlyBuiltDependencies:
   - esbuild
   - libpq

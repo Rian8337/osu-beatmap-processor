@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@rian8337/osu-base':
-        specifier: 4.0.0-beta.91
-        version: 4.0.0-beta.91
+        specifier: 4.0.0-beta.96
+        version: 4.0.0-beta.96
       cors:
         specifier: ^2.8.6
         version: 2.8.6
@@ -77,11 +77,11 @@ packages:
 
   '@esbuild-kit/core-utils@3.3.2':
     resolution: {integrity: sha512-sPRAnw9CdSsRmEtnsl2WXWdyquogVpB3yZ3dgwJfe8zrOzTsV7cJvmwrKVa+0ma5BoiGJ+BoqkMvawbayKUsqQ==}
-    deprecated: 'Merged into tsx: https://tsx.is'
+    deprecated: 'Merged into tsx: https://tsx.hirok.io'
 
   '@esbuild-kit/esm-loader@2.6.5':
     resolution: {integrity: sha512-FxEMIkJKnodyA1OaCUoEvbYRkoZlLZ4d/eXFu9Fh8CbBBgP5EmZxrfTRyN0qpXZ4vOvqnE5YdRdcrmUUXuU+dA==}
-    deprecated: 'Merged into tsx: https://tsx.is'
+    deprecated: 'Merged into tsx: https://tsx.hirok.io'
 
   '@esbuild/aix-ppc64@0.19.12':
     resolution: {integrity: sha512-bmoCYyWdEL3wDQIVbcyzRyeKLgk2WtWLTWz1ZIAZF/EGbNOwSA6ew3PftJ1PqMiOOGu0OyFMzG53L0zqIpPeNA==}
@@ -414,8 +414,8 @@ packages:
   '@petamoriken/float16@3.9.3':
     resolution: {integrity: sha512-8awtpHXCx/bNpFt4mt2xdkgtgVvKqty8VbjHI/WWWQuEw+KLzFot3f4+LkQY9YmOtq7A5GdOnqoIC8Pdygjk2g==}
 
-  '@rian8337/osu-base@4.0.0-beta.91':
-    resolution: {integrity: sha512-NdWf3FK6NbjtCGzqFRDOG0FCgv2QgCrgyfwAKoJcFUmPrfxfAbsKfwGHdbw9+l71jG1oPbjbwr9JanpmmGqEUA==}
+  '@rian8337/osu-base@4.0.0-beta.96':
+    resolution: {integrity: sha512-GAQvkYfAagov4x0ccL2WvZOoYwe+PG2DYdbYZ+xiV8zky/JBLEmTGjH+NIlSp6pyqLOJVH/JYdEXkc9cuQMFAQ==}
     engines: {node: '>=18'}
 
   '@types/body-parser@1.19.6':
@@ -1576,7 +1576,7 @@ snapshots:
 
   '@petamoriken/float16@3.9.3': {}
 
-  '@rian8337/osu-base@4.0.0-beta.91': {}
+  '@rian8337/osu-base@4.0.0-beta.96': {}
 
   '@types/body-parser@1.19.6':
     dependencies:
