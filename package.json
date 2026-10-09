@@ -10,7 +10,7 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
-  "packageManager": "pnpm@11.5.2",
+  "packageManager": "pnpm@12.9.0",
   "author": "Rian8337",
   "license": "MIT",
   "description": "A dedicated backend for processing and caching osu! beatmaps.",
@@ -27,7 +27,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@rian8337/osu-base": "4.0.0-beta.96",
+    "@rian8337/osu-base": "4.0.0-beta.100",
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",
     "drizzle-orm": "^0.41.0",
