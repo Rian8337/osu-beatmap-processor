@@ -35,20 +35,20 @@ This is a targeted fix. A rewrite of the service in the style of the dpp backend
 
 Outgoing requests to osu! are paced with [`p-queue`](https://github.com/sindresorhus/p-queue). Each budget is a queue that starts at most one task every `60 / N` seconds (`interval = 60000 / N` ms, `intervalCap = 1`). That gives a smooth N per minute with no bursts, which is safe whether osu! counts in fixed or sliding windows.
 
-| Variable | Default | Queue | Applies to |
-| --- | --- | --- | --- |
-| `OSU_API_RATE_LIMIT` | 55 per minute | API queue | `get_beatmaps` calls |
-| `OSU_FILE_RATE_LIMIT` | 55 per minute | file queue | `.osu` downloads |
+| Variable               | Default       | Queue       | Applies to                              |
+| ---------------------- | ------------- | ----------- | --------------------------------------- |
+| `OSU_API_RATE_LIMIT`   | 55 per minute | API queue   | `get_beatmaps` calls                    |
+| `OSU_FILE_RATE_LIMIT`  | 55 per minute | file queue  | `.osu` downloads                        |
 | `OSU_TOTAL_RATE_LIMIT` | 55 per minute | total queue | every osu! request (the per-IP ceiling) |
 
 Every osu! request passes through its kind's queue and then the total queue: the kind queue's task adds the request to the total queue, and only the total queue's task performs the HTTP call. Each queue therefore caps the rate of calls through it. The defaults assume the worst case (one shared budget of 60, with a margin). If downloads turn out to be counted separately, raising `OSU_TOTAL_RATE_LIMIT` to 110 doubles throughput without code changes.
 
 ### Lanes
 
-| Key | Lane | Callers |
-| --- | --- | --- |
+| Key                              | Lane     | Callers                                                                               |
+| -------------------------------- | -------- | ------------------------------------------------------------------------------------- |
 | `INTERNAL_SERVER_KEY` (existing) | priority | the game (`pp-processor-node`), the bot, websites, everything that uses the key today |
-| `BULK_SERVER_KEY` (new) | bulk | the dpp processors, the old dpp backend's recalculation, `populateCache.ts` |
+| `BULK_SERVER_KEY` (new)          | bulk     | the dpp processors, the old dpp backend's recalculation, `populateCache.ts`           |
 
 - Both keys are accepted by every route, in the existing `key` query parameter. An unknown key is still `401`.
 - Priority requests are added to every queue with p-queue priority `1`, bulk requests with `0`, so a priority request is started before any waiting bulk request.
@@ -60,12 +60,12 @@ Every osu! request passes through its kind's queue and then the total queue: the
 - A request waits in its queues, in priority order and otherwise in arrival order.
 - Before queueing, the limiter estimates the wait: for each queue on the request's path, (the number of waiting tasks it would not overtake + 1) × that queue's interval, taking the largest, plus any remaining `429` pause. A priority request only waits behind priority tasks (`sizeBy({ priority: 1 })`); a bulk request waits behind everything. If the estimate exceeds the lane's limit, the request is refused at once with `OsuUnavailableError` (`503`, `Retry-After` = the estimated wait in whole seconds, at least 1):
 
-| Variable | Default |
-| --- | --- |
-| `PRIORITY_MAX_WAIT_MS` | 8000 |
-| `BULK_MAX_WAIT_MS` | 5000 |
+| Variable               | Default |
+| ---------------------- | ------- |
+| `PRIORITY_MAX_WAIT_MS` | 8000    |
+| `BULK_MAX_WAIT_MS`     | 5000    |
 
-  Both are below the dpp processor's 10-second beatmap service timeout, so a refused request reaches the processor as a `503` (which it already maps to `BEATMAP_SERVICE_UNAVAILABLE`) rather than a timeout. The estimate is approximate (later priority arrivals can overtake a waiting bulk request); a bulk request that ends up waiting longer is still served, and the processor's own timeout bounds it.
+Both are below the dpp processor's 10-second beatmap service timeout, so a refused request reaches the processor as a `503` (which it already maps to `BEATMAP_SERVICE_UNAVAILABLE`) rather than a timeout. The estimate is approximate (later priority arrivals can overtake a waiting bulk request); a bulk request that ends up waiting longer is still served, and the processor's own timeout bounds it.
 
 ### `429` from osu!
 
@@ -76,18 +76,18 @@ Every osu! request passes through its kind's queue and then the total queue: the
 
 ### Optional work
 
-The 15-minute status re-check of unranked beatmaps is optional. It runs only when every queue on its path is idle (no waiting and no running tasks); otherwise it is skipped. A skipped or failed re-check never delays or fails the request.
+The status re-check of cached non-ranked beatmaps is optional. It runs only when every queue on its path is idle (no waiting and no running tasks); otherwise it is skipped. A skipped or failed re-check never delays or fails the request.
 
 ## osu! gateway
 
 `src/osu/OsuGateway.ts` is the only code that calls osu!. The service no longer uses osu-base's `OsuAPIRequestBuilder` or `MapInfo.getInformation` for requests (both retry internally, spending budget the limiter cannot see). osu-base's `MapInfo.from` and its types are still used to convert responses, so stored data is unchanged.
 
-| Operation | osu! request | Result |
-| --- | --- | --- |
-| `getBeatmap(lane, idOrHash)` | `GET {OSU_API_BASE_URL}/get_beatmaps?k=…&b=…` or `&h=…` | the first osu!standard beatmap, or `null` if osu! returns none |
-| `getBeatmapset(lane, id)` | `GET {OSU_API_BASE_URL}/get_beatmaps?k=…&s=…` | the beatmaps, or `null` if none |
-| `downloadFile(lane, id)` | `GET {OSU_FILE_BASE_URL}/{id}` | the file bytes, or `null` on 404 |
-| `tryGetBeatmapNow(lane, idOrHash)` | as `getBeatmap` | `undefined` without a request unless every queue on the lane's path is idle; used only for optional status re-checks |
+| Operation                          | osu! request                                            | Result                                                                                                               |
+| ---------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `getBeatmap(lane, idOrHash)`       | `GET {OSU_API_BASE_URL}/get_beatmaps?k=…&b=…` or `&h=…` | the first osu!standard beatmap, or `null` if osu! returns none                                                       |
+| `getBeatmapset(lane, id)`          | `GET {OSU_API_BASE_URL}/get_beatmaps?k=…&s=…`           | the beatmaps, or `null` if none                                                                                      |
+| `downloadFile(lane, id)`           | `GET {OSU_FILE_BASE_URL}/{id}`                          | the file bytes, or `null` on 404                                                                                     |
+| `tryGetBeatmapNow(lane, idOrHash)` | as `getBeatmap`                                         | `undefined` without a request unless every queue on the lane's path is idle; used only for optional status re-checks |
 
 - `OSU_API_BASE_URL` defaults to `https://osu.ppy.sh/api`, `OSU_FILE_BASE_URL` to `https://osu.ppy.sh/osu`. They exist so tests can point the gateway at a stub server.
 - Each operation is exactly one osu! request through the limiter. Any status other than `200` (and other than `404` for downloads), a network error, an unparsable body, or a `429` becomes `OsuUnavailableError`. Only an empty result (or a download `404`) is "not found".
@@ -99,9 +99,19 @@ The 15-minute status re-check of unranked beatmaps is optional. It runs only whe
 
 - `src/utils/beatmap/beatmapService.ts`: reimplemented on the gateway.
 - `src/utils/beatmap/beatmapStorage.ts`:
-  - `getBeatmap`, `getBeatmapset`, and `getBeatmapFile` take a `lane` and use the gateway.
-  - `OsuUnavailableError` propagates; only a genuine "not found" returns `null`.
-  - The 15-minute status re-check of unranked beatmaps uses `tryGetBeatmapNow`. If the queues are busy, the cached beatmap is served unchanged and `last_checked` is not updated, so a later request tries again. If the re-check request itself fails, the cached beatmap is served (today it returns `null`, which becomes a `404`).
+    - `getBeatmap`, `getBeatmapset`, and `getBeatmapFile` take a `lane` and use the gateway.
+    - `OsuUnavailableError` propagates; only a genuine "not found" returns `null`.
+    - The status re-check interval depends on the beatmap's status instead of a fixed 15 minutes (an updated beatmap gets a new MD5, so lookups by hash find new versions anyway; re-checks matter for lookups by ID and for status changes):
+
+        | Status                  | Re-checked after                                       | Variable                           |
+        | ----------------------- | ------------------------------------------------------ | ---------------------------------- |
+        | qualified               | 15 minutes (can be ranked or disqualified at any time) | `RECHECK_QUALIFIED_MINUTES`        |
+        | pending, WIP            | 60 minutes                                             | `RECHECK_PENDING_MINUTES`          |
+        | graveyard               | 1 day                                                  | `RECHECK_GRAVEYARD_MINUTES` (1440) |
+        | ranked, approved, loved | never (loved beatmaps can no longer be removed)        | —                                  |
+
+    - The re-check uses `tryGetBeatmapNow`. If the queues are busy, the cached beatmap is served unchanged and `last_checked` is not updated, so a later request tries again. If the re-check request itself fails, the cached beatmap is served (today it returns `null`, which becomes a `404`).
+
 - `src/utils/security.ts`: accepts either key and records the lane for the request (`res.locals.lane`).
 - `src/index.ts`: loads and validates the new configuration at startup (zod; invalid values stop the process with a message naming the variable), and adds an error middleware: `OsuUnavailableError` becomes `503` with `Retry-After` and `{ "error": "osu! is temporarily unavailable; retry later" }`. Other unexpected errors keep their current behavior.
 - `src/routes/*.ts`: pass `res.locals.lane` to the storage functions. Responses are otherwise unchanged.
@@ -109,13 +119,13 @@ The 15-minute status re-check of unranked beatmaps is optional. It runs only whe
 
 ## Responses
 
-| Situation | Before | After |
-| --- | --- | --- |
-| beatmap, beatmapset, or file exists | `200` | `200` (unchanged) |
-| osu! has no such beatmap / beatmapset / file | `404` | `404` (unchanged) |
-| rate-limited (our queues, or a `429` from osu!) | `404` | `503` + `Retry-After` |
-| osu! error, timeout, or network failure | `404` | `503` + `Retry-After` |
-| missing or unknown key | `401` | `401` (unchanged) |
+| Situation                                       | Before | After                 |
+| ----------------------------------------------- | ------ | --------------------- |
+| beatmap, beatmapset, or file exists             | `200`  | `200` (unchanged)     |
+| osu! has no such beatmap / beatmapset / file    | `404`  | `404` (unchanged)     |
+| rate-limited (our queues, or a `429` from osu!) | `404`  | `503` + `Retry-After` |
+| osu! error, timeout, or network failure         | `404`  | `503` + `Retry-After` |
+| missing or unknown key                          | `401`  | `401` (unchanged)     |
 
 The body keeps the `{ error }` shape. Callers that only check for `200` are unaffected; callers that treat `404` specially now see `503` where osu! was unavailable. `pp-processor-node`, the game's pp processor, already handles a `503` the same way as other failures (see Rollout).
 
@@ -124,20 +134,20 @@ The body keeps the `{ error }` shape. Callers that only check for `200` are unaf
 The repository has no tests. This change adds vitest (`pnpm test`) and a `typecheck` script, and tests the new logic:
 
 - **`RateLimiter`** (vitest fake timers, which drive p-queue's intervals):
-  - calls through a kind queue and the total queue are paced at the lower of the two rates;
-  - API and file calls together never exceed the total rate;
-  - priority is started before waiting bulk;
-  - bulk is capped at `BULK_SHARE`, and idle priority capacity is not lent to bulk;
-  - wait estimation and immediate refusal past the lane's limit, with the right `Retry-After`;
-  - a `429` pause stops all queues for `Retry-After` and requests during it are refused with the remaining time;
-  - `tryNow` runs only when its queues are idle and never queues otherwise.
+    - calls through a kind queue and the total queue are paced at the lower of the two rates;
+    - API and file calls together never exceed the total rate;
+    - priority is started before waiting bulk;
+    - bulk is capped at `BULK_SHARE`, and idle priority capacity is not lent to bulk;
+    - wait estimation and immediate refusal past the lane's limit, with the right `Retry-After`;
+    - a `429` pause stops all queues for `Retry-After` and requests during it are refused with the remaining time;
+    - `tryNow` runs only when its queues are idle and never queues otherwise.
 - **`OsuGateway`**, against a local stub HTTP server:
-  - parameters and the key are sent, and the key is redacted in logs;
-  - a `429` pauses the limiter and fails with `Retry-After`;
-  - `5xx`, a timeout, and an invalid body fail as unavailable;
-  - an empty result and a download `404` mean not found;
-  - concurrent calls in one lane share one request; calls in different lanes do not;
-  - exactly one request per operation, with no hidden retries.
+    - parameters and the key are sent, and the key is redacted in logs;
+    - a `429` pauses the limiter and fails with `Retry-After`;
+    - `5xx`, a timeout, and an invalid body fail as unavailable;
+    - an empty result and a download `404` mean not found;
+    - concurrent calls in one lane share one request; calls in different lanes do not;
+    - exactly one request per operation, with no hidden retries.
 - **Error middleware:** `OsuUnavailableError` becomes `503`, `Retry-After`, and the `{ error }` body.
 - **Config:** defaults, overrides, and invalid values rejected without echoing secrets.
 

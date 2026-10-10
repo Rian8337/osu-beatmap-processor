@@ -16,7 +16,7 @@
 - Commit messages: a short imperative sentence, then a blank line and the `Co-Authored-By:` attribution line your environment gives you.
 - Formatting: Prettier with the repository's `.prettierrc.cjs` (4-space indent). Lint: ESLint with the existing `.eslintrc.cjs`, run as `ESLINT_USE_FLAT_CONFIG=false` (ESLint 9 with an eslintrc file).
 - Relative imports use `.js` extensions (ESM, `module: nodenext`).
-- Defaults, exactly: `OSU_API_RATE_LIMIT` 55, `OSU_FILE_RATE_LIMIT` 55, `OSU_TOTAL_RATE_LIMIT` 55 (per minute), `BULK_SHARE` 0.5, `PRIORITY_MAX_WAIT_MS` 8000, `BULK_MAX_WAIT_MS` 5000, `OSU_API_BASE_URL` `https://osu.ppy.sh/api`, `OSU_FILE_BASE_URL` `https://osu.ppy.sh/osu`, osu! request timeout 10 000 ms, `Retry-After` fallback for a `429` without the header: 60 seconds.
+- Defaults, exactly: `OSU_API_RATE_LIMIT` 55, `OSU_FILE_RATE_LIMIT` 55, `OSU_TOTAL_RATE_LIMIT` 55 (per minute), `BULK_SHARE` 0.5, `PRIORITY_MAX_WAIT_MS` 8000, `BULK_MAX_WAIT_MS` 5000, `OSU_API_BASE_URL` `https://osu.ppy.sh/api`, `OSU_FILE_BASE_URL` `https://osu.ppy.sh/osu`, osu! request timeout 10 000 ms, `Retry-After` fallback for a `429` without the header: 60 seconds. Status re-check intervals: `RECHECK_QUALIFIED_MINUTES` 15, `RECHECK_PENDING_MINUTES` 60 (pending and WIP), `RECHECK_GRAVEYARD_MINUTES` 1440; ranked, approved, and loved beatmaps are never re-checked (loved beatmaps can no longer be removed).
 - Lanes: `INTERNAL_SERVER_KEY` → `priority` (p-queue priority `1`); `BULK_SERVER_KEY` → `bulk` (priority `0`). If `INTERNAL_SERVER_KEY` is unset, any key (or none) gets the priority lane, as today.
 - The 503 body is exactly `{ "error": "osu! is temporarily unavailable; retry later" }`, with `Retry-After` in whole seconds, at least 1.
 - Never log the osu! API key: redact the `k` query parameter in any logged URL.
@@ -28,7 +28,7 @@
 ## Review Focus
 
 1. **A beatmap that osu! says does not exist must still be `404`.** Only failures become `503`. An empty `get_beatmaps` result (or a file `404`) is "not found". Tests in Task 4 (gateway) and Task 5 (route mapping).
-2. **The optional status re-check must never turn a cached beatmap into an error.** A busy limiter or a failed re-check serves the cached beatmap unchanged; only "osu! no longer has it" behaves as before (not found). Test in Task 5.
+2. **The optional status re-check must never turn a cached beatmap into an error, and must not run for ranked, approved, or loved beatmaps.** A busy limiter or a failed re-check serves the cached beatmap unchanged; only "osu! no longer has it" behaves as before (not found). Test in Task 5.
 3. **A priority caller must never wait behind bulk.** Priority starts before waiting bulk on every shared queue, and in-flight sharing never crosses lanes. Tests in Task 3 and Task 4.
 4. **A `429` from osu! must stop everyone, not just the caller.** All queues pause for `Retry-After`; requests during the pause get `503` with the remaining time. Tests in Task 3 and Task 4.
 5. **An unknown key stays `401`; the bulk key works on every route.** Test in Task 5.
@@ -210,6 +210,7 @@ export interface Config {
     readonly maxWaitMs: { readonly priority: number; readonly bulk: number };
     readonly osuApiBaseUrl: string;
     readonly osuFileBaseUrl: string;
+    readonly recheckMinutes: { readonly qualified: number; readonly pending: number; readonly graveyard: number };
 }
 export class ConfigError extends Error {}
 export function loadConfig(env: NodeJS.ProcessEnv): Config;
@@ -235,6 +236,7 @@ describe("loadConfig", () => {
             maxWaitMs: { priority: 8000, bulk: 5000 },
             osuApiBaseUrl: "https://osu.ppy.sh/api",
             osuFileBaseUrl: "https://osu.ppy.sh/osu",
+            recheckMinutes: { qualified: 15, pending: 60, graveyard: 1440 },
         });
     });
 
@@ -251,6 +253,9 @@ describe("loadConfig", () => {
             BULK_MAX_WAIT_MS: "3000",
             OSU_API_BASE_URL: "http://127.0.0.1:1234/api/",
             OSU_FILE_BASE_URL: "http://127.0.0.1:1234/osu/",
+            RECHECK_QUALIFIED_MINUTES: "10",
+            RECHECK_PENDING_MINUTES: "30",
+            RECHECK_GRAVEYARD_MINUTES: "10080",
         });
 
         expect(config).toMatchObject({
@@ -261,6 +266,7 @@ describe("loadConfig", () => {
             maxWaitMs: { priority: 9000, bulk: 3000 },
             osuApiBaseUrl: "http://127.0.0.1:1234/api",
             osuFileBaseUrl: "http://127.0.0.1:1234/osu",
+            recheckMinutes: { qualified: 10, pending: 30, graveyard: 10080 },
         });
     });
 
@@ -371,6 +377,17 @@ export interface Config {
     readonly maxWaitMs: { readonly priority: number; readonly bulk: number };
     readonly osuApiBaseUrl: string;
     readonly osuFileBaseUrl: string;
+
+    /**
+     * How long a cached beatmap of each status is trusted before its status is re-checked with osu!. Ranked,
+     * approved, and loved beatmaps are never re-checked.
+     */
+    readonly recheckMinutes: {
+        readonly qualified: number;
+        /** Pending and WIP beatmaps. */
+        readonly pending: number;
+        readonly graveyard: number;
+    };
 }
 
 /**
@@ -403,6 +420,9 @@ const schema = z
         BULK_MAX_WAIT_MS: milliseconds.default(5000),
         OSU_API_BASE_URL: baseUrl.default("https://osu.ppy.sh/api"),
         OSU_FILE_BASE_URL: baseUrl.default("https://osu.ppy.sh/osu"),
+        RECHECK_QUALIFIED_MINUTES: z.coerce.number().int().min(1).default(15),
+        RECHECK_PENDING_MINUTES: z.coerce.number().int().min(1).default(60),
+        RECHECK_GRAVEYARD_MINUTES: z.coerce.number().int().min(1).default(1440),
     })
     .refine(
         (values) =>
@@ -455,6 +475,11 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
         },
         osuApiBaseUrl: values.OSU_API_BASE_URL,
         osuFileBaseUrl: values.OSU_FILE_BASE_URL,
+        recheckMinutes: {
+            qualified: values.RECHECK_QUALIFIED_MINUTES,
+            pending: values.RECHECK_PENDING_MINUTES,
+            graveyard: values.RECHECK_GRAVEYARD_MINUTES,
+        },
     };
 }
 
@@ -1241,13 +1266,11 @@ describe("OsuGateway", () => {
         [
             "a non-array body",
             (res: import("node:http").ServerResponse) =>
-                res
-                    .writeHead(200, { "Content-Type": "application/json" })
-                    .end(
-                        JSON.stringify({
-                            error: "Please provide a valid API key.",
-                        }),
-                    ),
+                res.writeHead(200, { "Content-Type": "application/json" }).end(
+                    JSON.stringify({
+                        error: "Please provide a valid API key.",
+                    }),
+                ),
         ],
     ])(
         "fails as unavailable on %s, once, without leaking the key",
@@ -1583,10 +1606,10 @@ export class OsuGateway {
         }
 
         this.inFlight.set(key, promise);
-        void promise.then(
-            () => this.inFlight.delete(key),
-            () => this.inFlight.delete(key),
-        );
+        void promise
+            // The caller handles a rejection; this copy only waits for the promise to settle.
+            .catch(() => undefined)
+            .finally(() => this.inFlight.delete(key));
 
         return promise;
     }
@@ -1695,6 +1718,11 @@ export function recheckBeatmap(
     lane: Lane,
     beatmapId: number,
 ): Promise<RecheckOutcome>;
+/** How long a cached beatmap of this status is trusted, in ms; `null` = never re-checked (ranked, approved, loved). */
+export function recheckIntervalMs(
+    status: RankedStatus,
+    minutes: Config["recheckMinutes"],
+): number | null;
 
 // src/utils/beatmap/beatmapStorage.ts (signatures change)
 export function getBeatmap(
@@ -1803,7 +1831,11 @@ describe("osuUnavailableHandler", () => {
 import { describe, expect, it, vi } from "vitest";
 import { OsuUnavailableError } from "../../../src/osu/errors.js";
 import type { OsuGateway } from "../../../src/osu/OsuGateway.js";
-import { recheckBeatmap } from "../../../src/utils/beatmap/recheck.js";
+import { RankedStatus } from "@rian8337/osu-base";
+import {
+    recheckBeatmap,
+    recheckIntervalMs,
+} from "../../../src/utils/beatmap/recheck.js";
 
 function gatewayReturning(
     result: Awaited<ReturnType<OsuGateway["tryGetBeatmapNow"]>> | Error,
@@ -1816,6 +1848,26 @@ function gatewayReturning(
         ),
     };
 }
+
+describe("recheckIntervalMs", () => {
+    const minutes = { qualified: 15, pending: 60, graveyard: 1440 };
+
+    it.each([
+        [RankedStatus.Qualified, 15 * 60_000],
+        [RankedStatus.Pending, 60 * 60_000],
+        [RankedStatus.Wip, 60 * 60_000],
+        [RankedStatus.Graveyard, 1440 * 60_000],
+    ])("re-checks status %i after %i ms", (status, expected) => {
+        expect(recheckIntervalMs(status, minutes)).toBe(expected);
+    });
+
+    it.each([RankedStatus.Ranked, RankedStatus.Approved, RankedStatus.Loved])(
+        "never re-checks status %i",
+        (status) => {
+            expect(recheckIntervalMs(status, minutes)).toBeNull();
+        },
+    );
+});
 
 describe("recheckBeatmap", () => {
     it("skips when the limiter is busy", async () => {
@@ -1986,9 +2038,35 @@ export const osuUnavailableHandler: ErrorRequestHandler = (
 `src/utils/beatmap/recheck.ts`:
 
 ```ts
-import type { OsuAPIResponse } from "@rian8337/osu-base";
+import { RankedStatus, type OsuAPIResponse } from "@rian8337/osu-base";
+import type { Config } from "../../config.js";
 import { OsuUnavailableError, type Lane } from "../../osu/errors.js";
 import type { OsuGateway } from "../../osu/OsuGateway.js";
+
+/**
+ * How long a cached beatmap of this status is trusted before its status is re-checked with osu!, in
+ * milliseconds. Ranked, approved, and loved beatmaps cannot change or be removed, so they are never re-checked
+ * (`null`). An updated beatmap gets a new MD5 hash, so lookups by hash find new versions regardless; re-checks
+ * only matter for lookups by ID and for status changes.
+ */
+export function recheckIntervalMs(
+    status: RankedStatus,
+    minutes: Config["recheckMinutes"],
+): number | null {
+    switch (status) {
+        case RankedStatus.Ranked:
+        case RankedStatus.Approved:
+        case RankedStatus.Loved:
+            return null;
+        case RankedStatus.Qualified:
+            return minutes.qualified * 60_000;
+        case RankedStatus.Pending:
+        case RankedStatus.Wip:
+            return minutes.pending * 60_000;
+        case RankedStatus.Graveyard:
+            return minutes.graveyard * 60_000;
+    }
+}
 
 export type RecheckOutcome =
     | { readonly kind: "skipped" }
@@ -2039,7 +2117,7 @@ import type { Lane } from "../../osu/errors.js";
 import { recheckBeatmap } from "./recheck.js";
 ```
 
-and keep `MapInfo`, `RankedStatus` from `@rian8337/osu-base`.
+and replace `import { recheckBeatmap } from "./recheck.js";` with `import { recheckBeatmap, recheckIntervalMs } from "./recheck.js";`, add `import { getConfig } from "../../config.js";`, and keep `MapInfo` from `@rian8337/osu-base` (`RankedStatus` is no longer used in this file; remove it from the import if lint reports it unused).
 
 2. Replace `getBeatmap` with:
 
@@ -2096,12 +2174,16 @@ export async function getBeatmap(
         await insertBeatmapsToDatabase(cache);
     }
 
-    // For unranked beatmaps, re-check the status if 15 minutes have passed since the last check, but only when
-    // osu!'s budget is idle: a busy or failed re-check serves the cached beatmap unchanged.
+    // Re-check the status once the beatmap's status interval has passed, but only when osu!'s budget is idle:
+    // a busy or failed re-check serves the cached beatmap unchanged.
+    const recheckAfterMs = recheckIntervalMs(
+        cache.approved,
+        getConfig().recheckMinutes,
+    );
+
     if (
-        cache.approved !== RankedStatus.Ranked &&
-        cache.approved !== RankedStatus.Approved &&
-        cache.last_checked < new Date(Date.now() - 900000)
+        recheckAfterMs !== null &&
+        cache.last_checked.getTime() < Date.now() - recheckAfterMs
     ) {
         const recheck = await recheckBeatmap(gateway, lane, cache.beatmap_id);
 
@@ -2324,6 +2406,9 @@ OSU_TOTAL_RATE_LIMIT=55 # all osu! requests per minute (per-IP ceiling); 110 if 
 BULK_SHARE=0.5          # fraction of each budget the bulk lane may use
 PRIORITY_MAX_WAIT_MS=8000
 BULK_MAX_WAIT_MS=5000
+RECHECK_QUALIFIED_MINUTES=15   # how long cached qualified beatmaps are trusted before re-checking their status
+RECHECK_PENDING_MINUTES=60     # pending and WIP beatmaps
+RECHECK_GRAVEYARD_MINUTES=1440 # graveyard beatmaps; ranked, approved, and loved beatmaps are never re-checked
 ```
 
 `populateCache.ts` uses the bulk lane and is paced automatically, so it can run alongside the service.
