@@ -25,7 +25,7 @@ This is a targeted fix. A rewrite of the service in the style of the dpp backend
 
 - Moving to osu! API v2.
 - Rewriting the service (planned separately).
-- Coordinating several beatmap service processes: it runs as one process, so in-memory queues are correct.
+- Coordinating several beatmap service processes: it runs as one process, so in-memory queues are correct. `populateCache.ts` is such a separate process (with its own limiter); the README rule applies: run it only while the service is stopped, or with its own rate limit settings so both stay under osu!'s limit.
 - Changes to the dpp processor's code (only its configured key changes).
 - Removing the built-in retries from osu-base's `OsuAPIRequestBuilder` (retrying is outside a request builder's job). That is a follow-up in `osu-droid-module`; this service simply stops using the builder for requests.
 
@@ -52,7 +52,7 @@ Every osu! request passes through its kind's queue and then the total queue: the
 
 - Both keys are accepted by every route, in the existing `key` query parameter. An unknown key is still `401`.
 - Priority requests are added to every queue with p-queue priority `1`, bulk requests with `0`, so a priority request is started before any waiting bulk request.
-- The bulk lane may use at most `BULK_SHARE` (default `0.5`) of each budget. Bulk requests first pass through a bulk API or bulk file queue paced at `BULK_SHARE × OSU_API_RATE_LIMIT` (or the file rate) and at most that share of the total rate (the lower of the two). Idle priority capacity is not lent to bulk, so the game always has headroom.
+- The bulk lane may use at most `BULK_SHARE` (default `0.5`) of each budget. Bulk requests first pass through a bulk API or bulk file queue paced at `BULK_SHARE × OSU_API_RATE_LIMIT` (or the file rate) and at most that share of the total rate (the lower of the two). A bulk total queue paced at `BULK_SHARE × OSU_TOTAL_RATE_LIMIT` follows, so bulk API and bulk file requests together stay within the share of the total. Idle priority capacity is not lent to bulk, so the game always has headroom.
 - Each request's lane is decided by the key it presented and passed explicitly to the storage functions.
 
 ### Waiting and refusing
@@ -70,7 +70,7 @@ Both are below the dpp processor's 10-second beatmap service timeout, so a refus
 ### `429` from osu!
 
 - The service never retries a `429`.
-- Every queue is paused (`pause()`) until the response's `Retry-After` (seconds), or 60 seconds if it has none, then resumed (`start()`). While paused, the wait estimate includes the remaining pause, so most requests are refused with that `Retry-After` instead of queueing.
+- Every queue is paused (`pause()`) until the response's `Retry-After` (seconds), rounded up to whole seconds and capped at 3600 s, or 60 seconds if it has none, then resumed (`start()`). While paused, the wait estimate includes the remaining pause, so most requests are refused with that `Retry-After` instead of queueing.
 - The request that got the `429` fails with `OsuUnavailableError` and that `Retry-After`.
 - The pause is logged once per `429`.
 

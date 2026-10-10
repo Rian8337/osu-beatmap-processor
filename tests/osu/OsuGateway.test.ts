@@ -68,6 +68,16 @@ describe("OsuGateway", () => {
         ]);
     });
 
+    it("encodes a hash so it cannot add osu! query parameters", async () => {
+        stub.handle(json([beatmap(5)]));
+
+        await gateway.getBeatmap("priority", "x&s=1");
+
+        expect(stub.requests).toEqual([
+            `/api/get_beatmaps?k=${apiKey}&h=x%26s%3D1`,
+        ]);
+    });
+
     it("treats an empty result or a non-standard beatmap as not found", async () => {
         stub.handle(json([]));
 
@@ -124,6 +134,23 @@ describe("OsuGateway", () => {
         expect(
             JSON.stringify(vi.mocked(console.warn).mock.calls),
         ).not.toContain(apiKey);
+    });
+
+    it.each([
+        ["99999999", 3600],
+        ["0.5", 1],
+        ["2.2", 3],
+    ])("rounds up and caps Retry-After %s to %d s", async (header, seconds) => {
+        const pauseFor = vi.spyOn(limiter, "pauseFor");
+
+        stub.handle((_req, res) => {
+            res.writeHead(429, { "Retry-After": header }).end();
+        });
+
+        await expect(gateway.getBeatmap("priority", 1)).rejects.toMatchObject({
+            retryAfterSeconds: seconds,
+        });
+        expect(pauseFor).toHaveBeenCalledWith(seconds * 1000);
     });
 
     it("uses 60 seconds when a 429 has no Retry-After", async () => {

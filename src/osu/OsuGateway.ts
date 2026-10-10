@@ -20,6 +20,11 @@ export interface OsuGatewayOptions {
 const failureRetryAfterSeconds = 5;
 
 /**
+ * Longest pause honored from a `Retry-After` header (larger values would overflow timers).
+ */
+const maxRetryAfterSeconds = 3600;
+
+/**
  * Pause after a `429` without a `Retry-After` header.
  */
 const defaultRateLimitPauseSeconds = 60;
@@ -40,7 +45,9 @@ function parseRetryAfter(header: string | null): number | undefined {
 
     const seconds = Number(header);
 
-    return Number.isFinite(seconds) && seconds > 0 ? seconds : undefined;
+    return Number.isFinite(seconds) && seconds > 0
+        ? Math.min(Math.ceil(seconds), maxRetryAfterSeconds)
+        : undefined;
 }
 
 function isBeatmapList(body: unknown): body is OsuAPIResponse[] {
@@ -120,7 +127,7 @@ export class OsuGateway {
     private beatmapQuery(idOrHash: number | string): string {
         return typeof idOrHash === "number"
             ? `b=${idOrHash.toString()}`
-            : `h=${idOrHash}`;
+            : `h=${encodeURIComponent(idOrHash)}`;
     }
 
     private getBeatmapList(

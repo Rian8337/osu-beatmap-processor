@@ -172,6 +172,8 @@ export async function getBeatmapset(
             cache.set(databaseBeatmap.beatmap_id, databaseBeatmap);
         }
 
+        beatmapSetIdCache.set(id, cache);
+
         // Check the validity of per-beatmap cache.
         for (const beatmap of cache.values()) {
             const oldBeatmap =

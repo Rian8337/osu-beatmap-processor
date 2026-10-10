@@ -6,7 +6,7 @@ A dedicated backend for processing and caching osu! beatmaps.
 
 To setup the server, you need:
 
-- [Node.js](https://nodejs.org/en) v18 or later
+- [Node.js](https://nodejs.org/en) v20 or later
 - [PostgreSQL](https://www.postgresql.org/) v14 or later
 
 Create an environment variable file (`.env`) in the root directory of the repository and fill it with the following variables:
@@ -61,7 +61,7 @@ RECHECK_PENDING_MINUTES=60     # pending and WIP beatmaps
 RECHECK_GRAVEYARD_MINUTES=1440 # graveyard beatmaps; ranked, approved, and loved beatmaps are never re-checked
 ```
 
-`populateCache.ts` uses the bulk lane and is paced automatically, so it can run alongside the service.
+`populateCache.ts` uses the bulk lane, but it is a separate process with its own rate limiter, so it does not share a budget with the running service. Run it only while the service is stopped, or give it its own `OSU_API_RATE_LIMIT`, `OSU_FILE_RATE_LIMIT`, and `OSU_TOTAL_RATE_LIMIT` so that its limits plus the service's stay under osu!'s limit (for example, the service with `OSU_TOTAL_RATE_LIMIT=40` and the script with `OSU_TOTAL_RATE_LIMIT=15`).
 
 ### Setup PostgreSQL in Linux
 

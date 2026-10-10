@@ -10,6 +10,12 @@ export const osuUnavailableHandler: ErrorRequestHandler = (
     res,
     next,
 ) => {
+    if (res.headersSent) {
+        next(error);
+
+        return;
+    }
+
     if (!(error instanceof OsuUnavailableError)) {
         next(error);
 

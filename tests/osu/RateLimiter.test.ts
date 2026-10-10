@@ -127,6 +127,30 @@ describe("RateLimiter", () => {
         }
     });
 
+    it("caps bulk API and bulk file calls together at the bulk share of the total", async () => {
+        const limiter = new RateLimiter(relaxed);
+        const { starts, task } = recorder();
+        const done = Promise.all(
+            ["api", "file", "api", "file", "api", "file"].map((kind, i) =>
+                limiter.schedule(
+                    "bulk",
+                    kind === "api" ? "api" : "file",
+                    task(`${kind}-${i.toString()}`),
+                ),
+            ),
+        );
+
+        await vi.advanceTimersByTimeAsync(30_000);
+        await done;
+
+        // 60 per minute at a 0.5 share is one call every 2 s across both kinds.
+        expect(starts).toHaveLength(6);
+
+        for (const gap of gaps(starts)) {
+            expect(gap).toBeGreaterThanOrEqual(2000);
+        }
+    });
+
     it("refuses at once when the estimated wait exceeds the lane's limit", async () => {
         const limiter = new RateLimiter({
             ...relaxed,

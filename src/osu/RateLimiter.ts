@@ -38,13 +38,14 @@ function paced(perMinute: number): PacedQueue {
 
 /**
  * Paces outgoing osu! requests. Every request passes through its kind's queue and the total queue (and, for the
- * bulk lane, a bulk queue at `bulkShare` of the rate); each queue starts at most one task per interval. Priority
+ * bulk lane, a bulk kind queue and a bulk total queue at `bulkShare` of the rate); each queue starts at most one task per interval. Priority
  * tasks start before waiting bulk tasks on every shared queue.
  */
 export class RateLimiter {
     private readonly kindQueues: Record<RequestKind, PacedQueue>;
     private readonly bulkQueues: Record<RequestKind, PacedQueue>;
     private readonly totalQueue: PacedQueue;
+    private readonly bulkTotalQueue: PacedQueue;
     private readonly maxWaitMs: RateLimiterOptions["maxWaitMs"];
     private pausedUntil = 0;
     private resumeTimer: NodeJS.Timeout | undefined;
@@ -65,6 +66,7 @@ export class RateLimiter {
                 bulkShare * Math.min(ratesPerMinute.file, ratesPerMinute.total),
             ),
         };
+        this.bulkTotalQueue = paced(bulkShare * ratesPerMinute.total);
         this.maxWaitMs = options.maxWaitMs;
     }
 
@@ -148,7 +150,9 @@ export class RateLimiter {
     private path(lane: Lane, kind: RequestKind): PacedQueue[] {
         const shared = [this.kindQueues[kind], this.totalQueue];
 
-        return lane === "bulk" ? [this.bulkQueues[kind], ...shared] : shared;
+        return lane === "bulk"
+            ? [this.bulkQueues[kind], this.bulkTotalQueue, ...shared]
+            : shared;
     }
 
     private allQueues(): PacedQueue[] {
@@ -158,6 +162,7 @@ export class RateLimiter {
             this.totalQueue,
             this.bulkQueues.api,
             this.bulkQueues.file,
+            this.bulkTotalQueue,
         ];
     }
 
