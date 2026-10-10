@@ -15,7 +15,7 @@ const config = {
     parser: "@typescript-eslint/parser",
     parserOptions: {
         ecmaVersion: 2022,
-        project: "tsconfig.json",
+        project: "tsconfig.typecheck.json",
         tsconfigRootDir: __dirname,
     },
     rules: {

@@ -1,12 +1,15 @@
 import "dotenv/config";
-import { getBeatmapsetFromOsuAPI } from "./utils/beatmap/beatmapService";
-import { insertBeatmapsToDatabase } from "./utils/beatmap/beatmapStorage";
-import { convertOsuAPIResponseToDatabaseBeatmap } from "./utils/beatmap/beatmapConverter";
 import { RankedStatus, Utils } from "@rian8337/osu-base";
-import { db } from "./database";
-import { populateTable } from "./database/schema";
+import { db } from "./database/index.js";
+import { populateTable } from "./database/schema.js";
+import { getOsuGateway, OsuUnavailableError } from "./osu/index.js";
+import { convertOsuAPIResponseToDatabaseBeatmap } from "./utils/beatmap/beatmapConverter.js";
+import { insertBeatmapsToDatabase } from "./utils/beatmap/beatmapStorage.js";
 
+// Walks every beatmapset ID through osu! on the bulk lane. The rate limiter paces it, and it waits out
+// refusals and 429 pauses instead of skipping IDs.
 void (async () => {
+    const gateway = getOsuGateway();
     let id = await db
         .select()
         .from(populateTable)
@@ -22,11 +25,20 @@ void (async () => {
     while (id <= 2500000) {
         await db.update(populateTable).set({ id });
 
-        const beatmaps = await getBeatmapsetFromOsuAPI(id);
+        let beatmaps;
 
-        await Utils.sleep(0.1);
+        try {
+            beatmaps = await gateway.getBeatmapset("bulk", id);
+        } catch (e) {
+            if (e instanceof OsuUnavailableError) {
+                await Utils.sleep(e.retryAfterSeconds);
+                continue;
+            }
 
-        if (beatmaps === null || beatmaps.length === 0) {
+            throw e;
+        }
+
+        if (beatmaps === null) {
             console.log("Beatmapset with ID", id++, "not found.");
             continue;
         }
