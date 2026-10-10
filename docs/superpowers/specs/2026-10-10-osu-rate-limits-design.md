@@ -143,9 +143,15 @@ The repository has no tests. This change adds vitest (`pnpm test`) and a `typech
 
 Storage and route code that needs Postgres is not covered; adding a database test setup belongs to the planned rewrite.
 
-## To verify during planning
+## ES modules
 
-- The service compiles to CommonJS (`module: commonjs`) and runs on Node 24, while `p-queue` 9 is ESM-only. Node 24 can `require()` ESM; confirm the TypeScript settings resolve its types and emit a working `require`. If not, use `p-queue` 6, the last CommonJS release, and confirm it has the APIs used here (`interval`, `intervalCap`, `priority`, `pause`/`start`, `sizeBy`).
+`p-queue` 9 is ESM-only, so the service switches from CommonJS to ES modules first, as a separate, behavior-neutral change:
+
+- `package.json`: `"type": "module"`.
+- `tsconfig.json`: `"module": "nodenext"` (module resolution follows).
+- Every relative import gets its `.js` extension (26 imports today), and directory imports name their file (`../database` becomes `../database/index.js`).
+
+A probe on a copy of the repository (Node 24.21, TypeScript 5.9.3) confirmed this compiles with no other changes, `dist/index.js` starts and listens, and `p-queue` 9 works (intervals, priority, `sizeBy`). The `start` script (`node --trace-warnings .`) and `main` (`dist/index.js`) keep working. Imports are evaluated before `dotenv`'s `config()` runs, exactly as with the current compiled `require` calls, so environment loading behaves as before.
 
 ## Rollout
 
