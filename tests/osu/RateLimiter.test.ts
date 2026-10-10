@@ -156,26 +156,41 @@ describe("RateLimiter", () => {
         await Promise.all(accepted);
     });
 
-    it("estimates a priority wait only from priority calls ahead of it", () => {
-        const limiter = new RateLimiter(relaxed);
+    it("estimates a priority wait only from priority calls ahead of it", async () => {
+        // A bulk queue faster than the shared API queue lets several bulk calls reach (and wait in) the latter.
+        const limiter = new RateLimiter({ ...relaxed, bulkShare: 4 });
         const { task } = recorder();
+        const calls: Promise<string>[] = [];
 
         for (let i = 0; i < 5; i++) {
-            void limiter.schedule("bulk", "api", task(`bulk-${String(i)}`));
+            calls.push(
+                limiter.schedule("bulk", "api", task(`bulk-${String(i)}`)),
+            );
         }
+
+        await vi.advanceTimersByTimeAsync(1000);
 
         expect(limiter.estimateWaitMs("priority", "api")).toBeLessThanOrEqual(
             1000,
         );
-        expect(limiter.estimateWaitMs("bulk", "api")).toBeGreaterThan(5000);
+        expect(limiter.estimateWaitMs("bulk", "api")).toBeGreaterThan(3000);
+
+        await vi.advanceTimersByTimeAsync(20_000);
+        await Promise.all(calls);
     });
 
-    it("pauses every queue after a 429 and refuses with the remaining pause", async () => {
+    it("holds queued work during a 429 pause and refuses new work with the remaining pause", async () => {
+        expect.assertions(8);
+
         const limiter = new RateLimiter({
             ...relaxed,
             maxWaitMs: { priority: 8000, bulk: 5000 },
         });
         const { starts, task } = recorder();
+        const t0 = Date.now();
+        // The first call starts at once; the second waits for the next interval, so it is queued when the pause begins.
+        const first = limiter.schedule("priority", "api", task("first"));
+        const queued = limiter.schedule("priority", "api", task("queued"));
 
         limiter.pauseFor(30_000);
 
@@ -184,25 +199,71 @@ describe("RateLimiter", () => {
         ).toThrow(OsuUnavailableError);
 
         try {
-            await limiter.schedule("priority", "api", task("early"));
+            void limiter.schedule("priority", "api", task("early"));
         } catch (e) {
             expect(e).toBeInstanceOf(OsuUnavailableError);
-            // The remaining pause plus one queue interval.
+
+            // The remaining pause plus two queue intervals (the queued call and this one).
             const retryAfter =
                 e instanceof OsuUnavailableError ? e.retryAfterSeconds : 0;
 
             expect(retryAfter).toBeGreaterThanOrEqual(30);
-            expect(retryAfter).toBeLessThanOrEqual(31);
+            expect(retryAfter).toBeLessThanOrEqual(32);
         }
 
-        await vi.advanceTimersByTimeAsync(30_000);
+        await vi.advanceTimersByTimeAsync(29_999);
+
+        expect(starts.map((s) => s.label)).toEqual(["first"]);
+
+        await vi.advanceTimersByTimeAsync(1);
+        await Promise.all([first, queued]);
+
+        expect(starts.map((s) => s.label)).toEqual(["first", "queued"]);
+        expect(starts[1]?.at).toBeGreaterThanOrEqual(t0 + 30_000);
 
         const after = limiter.schedule("priority", "api", task("after"));
 
         await vi.advanceTimersByTimeAsync(2000);
 
         expect(await after).toBe("after");
-        expect(starts.map((s) => s.label)).toEqual(["after"]);
+    });
+
+    it("keeps the longer of overlapping pauses", async () => {
+        const limiter = new RateLimiter(relaxed);
+        const { starts, task } = recorder();
+        const t0 = Date.now();
+        const first = limiter.schedule("priority", "api", task("first"));
+        const queued = limiter.schedule("priority", "api", task("queued"));
+
+        limiter.pauseFor(20_000);
+        limiter.pauseFor(5000);
+
+        await vi.advanceTimersByTimeAsync(19_999);
+
+        expect(starts.map((s) => s.label)).toEqual(["first"]);
+
+        limiter.pauseFor(40_000);
+
+        await vi.advanceTimersByTimeAsync(30_000);
+
+        expect(starts.map((s) => s.label)).toEqual(["first"]);
+
+        await vi.advanceTimersByTimeAsync(10_000);
+        await Promise.all([first, queued]);
+
+        expect(starts[1]?.at).toBeGreaterThanOrEqual(t0 + 19_999 + 40_000);
+    });
+
+    it("skips optional work during a pause", async () => {
+        const limiter = new RateLimiter(relaxed);
+        const optional = vi.fn(() => Promise.resolve("checked"));
+
+        limiter.pauseFor(10_000);
+
+        expect(
+            await limiter.tryNow("priority", "api", optional),
+        ).toBeUndefined();
+        expect(optional).not.toHaveBeenCalled();
     });
 
     it("runs optional work only when its queues are idle", async () => {
@@ -230,5 +291,27 @@ describe("RateLimiter", () => {
 
         await vi.advanceTimersByTimeAsync(10_000);
         await Promise.all(busy);
+    });
+
+    it("skips optional work while a queue's interval is still in use, then runs it at once", async () => {
+        const limiter = new RateLimiter(relaxed);
+        const { task } = recorder();
+        const optional = vi.fn(() => Promise.resolve("checked"));
+
+        await limiter.schedule("priority", "api", task("done"));
+        await vi.advanceTimersByTimeAsync(50);
+
+        expect(
+            await limiter.tryNow("priority", "api", optional),
+        ).toBeUndefined();
+        expect(optional).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(950);
+
+        // No timer advance after this call: it must start synchronously.
+        const result = limiter.tryNow("priority", "api", optional);
+
+        expect(optional).toHaveBeenCalledTimes(1);
+        expect(await result).toBe("checked");
     });
 });

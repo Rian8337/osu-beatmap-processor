@@ -16,6 +16,8 @@ const priorityOf: Record<Lane, number> = { priority: 1, bulk: 0 };
 interface PacedQueue {
     readonly queue: PQueue;
     readonly intervalMs: number;
+    /** When this queue last started a task, in epoch milliseconds. */
+    lastStartMs: number;
 }
 
 function paced(perMinute: number): PacedQueue {
@@ -30,6 +32,7 @@ function paced(perMinute: number): PacedQueue {
             strict: true,
         }),
         intervalMs,
+        lastStartMs: -Infinity,
     };
 }
 
@@ -87,7 +90,12 @@ export class RateLimiter {
         const path = this.path(lane, kind);
         const idle =
             this.remainingPauseMs() === 0 &&
-            path.every(({ queue }) => queue.size === 0 && queue.pending === 0);
+            path.every(
+                ({ queue, intervalMs, lastStartMs }) =>
+                    queue.size === 0 &&
+                    queue.pending === 0 &&
+                    Date.now() - lastStartMs >= intervalMs,
+            );
 
         return idle
             ? this.run(path, priorityOf[lane], fn)
@@ -160,9 +168,15 @@ export class RateLimiter {
     ): Promise<T> {
         // Wrap `fn` from the innermost (last) queue outwards, so it starts once every queue has released it.
         return path.reduceRight<() => Promise<T>>(
-            (inner, { queue }) =>
-                () =>
-                    queue.add(inner, { priority }),
+            (inner, paced) => () =>
+                paced.queue.add(
+                    () => {
+                        paced.lastStartMs = Date.now();
+
+                        return inner();
+                    },
+                    { priority },
+                ),
             fn,
         )();
     }
