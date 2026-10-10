@@ -56,6 +56,7 @@ OSU_TOTAL_RATE_LIMIT=55 # all osu! requests per minute (per-IP ceiling); 110 if 
 BULK_SHARE=0.5          # fraction of each budget the bulk lane may use
 PRIORITY_MAX_WAIT_MS=8000
 BULK_MAX_WAIT_MS=5000
+BEATMAP_FILE_DIRECTORY= # where .osu files are stored; relative paths resolve from the working directory (default: beatmaps)
 RECHECK_QUALIFIED_MINUTES=15   # how long cached qualified beatmaps are trusted before re-checking their status
 RECHECK_PENDING_MINUTES=60     # pending and WIP beatmaps
 RECHECK_GRAVEYARD_MINUTES=1440 # graveyard beatmaps; ranked, approved, and loved beatmaps are never re-checked

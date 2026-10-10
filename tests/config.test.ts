@@ -1,3 +1,4 @@
+import { resolve } from "path";
 import { describe, expect, it } from "vitest";
 import { ConfigError, loadConfig } from "../src/config.js";
 
@@ -12,6 +13,7 @@ describe("loadConfig", () => {
             maxWaitMs: { priority: 8000, bulk: 5000 },
             osuApiBaseUrl: "https://osu.ppy.sh/api",
             osuFileBaseUrl: "https://osu.ppy.sh/osu",
+            beatmapFileDirectory: resolve("beatmaps"),
             recheckMinutes: { qualified: 15, pending: 60, graveyard: 1440 },
         });
     });
@@ -29,6 +31,7 @@ describe("loadConfig", () => {
             BULK_MAX_WAIT_MS: "3000",
             OSU_API_BASE_URL: "http://127.0.0.1:1234/api/",
             OSU_FILE_BASE_URL: "http://127.0.0.1:1234/osu/",
+            BEATMAP_FILE_DIRECTORY: "/data/osu-files",
             RECHECK_QUALIFIED_MINUTES: "10",
             RECHECK_PENDING_MINUTES: "30",
             RECHECK_GRAVEYARD_MINUTES: "10080",
@@ -42,6 +45,7 @@ describe("loadConfig", () => {
             maxWaitMs: { priority: 9000, bulk: 3000 },
             osuApiBaseUrl: "http://127.0.0.1:1234/api",
             osuFileBaseUrl: "http://127.0.0.1:1234/osu",
+            beatmapFileDirectory: "/data/osu-files",
             recheckMinutes: { qualified: 10, pending: 30, graveyard: 10080 },
         });
     });

@@ -13,8 +13,6 @@ import type { Lane } from "../../osu/errors.js";
 import { getOsuGateway } from "../../osu/index.js";
 import { recheckBeatmap, recheckIntervalMs } from "./recheck.js";
 
-const beatmapFileDirectory = join(process.cwd(), "beatmaps");
-
 const databaseBeatmapIdCache = new TimeConstrainedMap<number, DatabaseBeatmap>(
     900,
 );
@@ -207,7 +205,7 @@ export async function getBeatmapFile(
     id: number,
     hashComparison?: string,
 ): Promise<Buffer | null> {
-    const beatmapFilePath = join(beatmapFileDirectory, `${id.toString()}.osu`);
+    const beatmapFilePath = join(getConfig().beatmapFileDirectory, `${id.toString()}.osu`);
 
     // Check existing file first.
     let beatmapFile: Buffer | null = null;
@@ -318,7 +316,7 @@ async function invalidateBeatmapCache(
 }
 
 async function invalidateBeatmapFile(id: number) {
-    await unlink(join(beatmapFileDirectory, `${id.toString()}.osu`)).catch(
+    await unlink(join(getConfig().beatmapFileDirectory, `${id.toString()}.osu`)).catch(
         () => null,
     );
 }

@@ -1,3 +1,4 @@
+import { resolve } from "path";
 import { z } from "zod";
 
 /**
@@ -28,6 +29,11 @@ export interface Config {
     readonly maxWaitMs: { readonly priority: number; readonly bulk: number };
     readonly osuApiBaseUrl: string;
     readonly osuFileBaseUrl: string;
+
+    /**
+     * The absolute path of the directory where `.osu` files are stored.
+     */
+    readonly beatmapFileDirectory: string;
 
     /**
      * How long a cached beatmap of each status is trusted before its status is re-checked with osu!. Ranked,
@@ -71,6 +77,7 @@ const schema = z
         BULK_MAX_WAIT_MS: milliseconds.default(5000),
         OSU_API_BASE_URL: baseUrl.default("https://osu.ppy.sh/api"),
         OSU_FILE_BASE_URL: baseUrl.default("https://osu.ppy.sh/osu"),
+        BEATMAP_FILE_DIRECTORY: z.string().default("beatmaps"),
         RECHECK_QUALIFIED_MINUTES: z.coerce.number().int().min(1).default(15),
         RECHECK_PENDING_MINUTES: z.coerce.number().int().min(1).default(60),
         RECHECK_GRAVEYARD_MINUTES: z.coerce.number().int().min(1).default(1440),
@@ -126,6 +133,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
         },
         osuApiBaseUrl: values.OSU_API_BASE_URL,
         osuFileBaseUrl: values.OSU_FILE_BASE_URL,
+        beatmapFileDirectory: resolve(values.BEATMAP_FILE_DIRECTORY),
         recheckMinutes: {
             qualified: values.RECHECK_QUALIFIED_MINUTES,
             pending: values.RECHECK_PENDING_MINUTES,
