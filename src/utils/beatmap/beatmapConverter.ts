@@ -1,5 +1,5 @@
 import { MapInfo, OsuAPIResponse } from "@rian8337/osu-base";
-import { DatabaseBeatmap } from "../../database/schema/DatabaseBeatmap";
+import { DatabaseBeatmap } from "../../database/schema/DatabaseBeatmap.js";
 
 const padDateNumber = (num: number) => num.toString().padStart(2, "0");
 

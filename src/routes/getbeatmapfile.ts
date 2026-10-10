@@ -5,9 +5,9 @@ import {
     getBeatmapFile,
     getBeatmapFromDatabase,
     updateBeatmapMaxCombo,
-} from "../utils/beatmap/beatmapStorage";
-import { validateGETInternalKey } from "../utils/security";
-import { DatabaseBeatmap } from "../database/schema/DatabaseBeatmap";
+} from "../utils/beatmap/beatmapStorage.js";
+import { validateGETInternalKey } from "../utils/security.js";
+import { DatabaseBeatmap } from "../database/schema/DatabaseBeatmap.js";
 import { BeatmapDecoder } from "@rian8337/osu-base";
 import { PassThrough } from "stream";
 
@@ -70,7 +70,7 @@ router.get<
         readStream.pipe(res);
 
         // Attempt to update max combo in case osu! API returned a null max combo.
-        if (beatmap && beatmap.max_combo === null) {
+        if (beatmap?.max_combo === null) {
             const parsedBeatmap = new BeatmapDecoder().decode(
                 beatmapFile.toString(),
             ).result;

@@ -1,10 +1,10 @@
 import "dotenv/config";
-import { getBeatmapsetFromOsuAPI } from "./utils/beatmap/beatmapService";
-import { insertBeatmapsToDatabase } from "./utils/beatmap/beatmapStorage";
-import { convertOsuAPIResponseToDatabaseBeatmap } from "./utils/beatmap/beatmapConverter";
+import { getBeatmapsetFromOsuAPI } from "./utils/beatmap/beatmapService.js";
+import { insertBeatmapsToDatabase } from "./utils/beatmap/beatmapStorage.js";
+import { convertOsuAPIResponseToDatabaseBeatmap } from "./utils/beatmap/beatmapConverter.js";
 import { RankedStatus, Utils } from "@rian8337/osu-base";
-import { db } from "./database";
-import { populateTable } from "./database/schema";
+import { db } from "./database/index.js";
+import { populateTable } from "./database/schema.js";
 
 void (async () => {
     let id = await db

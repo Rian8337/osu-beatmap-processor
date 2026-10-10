@@ -1,15 +1,14 @@
 import { MapInfo, RankedStatus } from "@rian8337/osu-base";
 import { eq } from "drizzle-orm";
 import { readFile, unlink, writeFile } from "fs/promises";
-import { homedir } from "os";
 import { join } from "path";
-import { db } from "../../database";
-import { beatmapTable } from "../../database/schema";
-import { DatabaseBeatmap } from "../../database/schema/DatabaseBeatmap";
-import { TimeConstrainedMap } from "../TimeConstrainedMap";
-import { computeMD5 } from "../util";
-import { convertMapInfoToDatabaseBeatmap } from "./beatmapConverter";
-import * as beatmapService from "./beatmapService";
+import { db } from "../../database/index.js";
+import { beatmapTable } from "../../database/schema.js";
+import { DatabaseBeatmap } from "../../database/schema/DatabaseBeatmap.js";
+import { TimeConstrainedMap } from "../TimeConstrainedMap.js";
+import { computeMD5 } from "../util.js";
+import { convertMapInfoToDatabaseBeatmap } from "./beatmapConverter.js";
+import * as beatmapService from "./beatmapService.js";
 
 const beatmapFileDirectory = join(process.cwd(), "beatmaps");
 

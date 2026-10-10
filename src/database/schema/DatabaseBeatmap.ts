@@ -1,9 +1,4 @@
-import {
-    BeatmapGenre,
-    BeatmapLanguage,
-    RankedStatus,
-} from "@rian8337/osu-base";
-import { beatmapTable } from "../schema";
+import { beatmapTable } from "../schema.js";
 
 /**
  * Represents a beatmap in the database.

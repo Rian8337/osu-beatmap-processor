@@ -1,9 +1,9 @@
 import { Router } from "express";
 import asyncHandler from "express-async-handler";
-import { getBeatmap } from "../utils/beatmap/beatmapStorage";
-import { convertDatabaseBeatmapToOsuAPIResponse } from "../utils/beatmap/beatmapConverter";
+import { getBeatmap } from "../utils/beatmap/beatmapStorage.js";
+import { convertDatabaseBeatmapToOsuAPIResponse } from "../utils/beatmap/beatmapConverter.js";
 import { OsuAPIResponse } from "@rian8337/osu-base";
-import { validateGETInternalKey } from "../utils/security";
+import { validateGETInternalKey } from "../utils/security.js";
 
 const router = Router();
 
