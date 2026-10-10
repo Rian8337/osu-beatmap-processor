@@ -7,6 +7,7 @@ import {
     updateBeatmapMaxCombo,
 } from "../utils/beatmap/beatmapStorage.js";
 import { validateGETInternalKey } from "../utils/security.js";
+import { getLane } from "../utils/lane.js";
 import { DatabaseBeatmap } from "../database/schema/DatabaseBeatmap.js";
 import { BeatmapDecoder } from "@rian8337/osu-base";
 import { PassThrough } from "stream";
@@ -37,7 +38,7 @@ router.get<
         if (id) {
             beatmapId = parseInt(id);
         } else {
-            beatmap = await getBeatmap(hash!);
+            beatmap = await getBeatmap(getLane(res), hash!);
 
             if (!beatmap) {
                 return void res.status(404).json({
@@ -50,7 +51,11 @@ router.get<
 
         beatmap ??= await getBeatmapFromDatabase(beatmapId);
 
-        const beatmapFile = await getBeatmapFile(beatmapId, beatmap?.file_md5);
+        const beatmapFile = await getBeatmapFile(
+            getLane(res),
+            beatmapId,
+            beatmap?.file_md5,
+        );
 
         if (!beatmapFile) {
             return void res.status(404).json({

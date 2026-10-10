@@ -4,6 +4,7 @@ import { getBeatmap } from "../utils/beatmap/beatmapStorage.js";
 import { convertDatabaseBeatmapToOsuAPIResponse } from "../utils/beatmap/beatmapConverter.js";
 import { OsuAPIResponse } from "@rian8337/osu-base";
 import { validateGETInternalKey } from "../utils/security.js";
+import { getLane } from "../utils/lane.js";
 
 const router = Router();
 
@@ -26,6 +27,7 @@ router.get<
         }
 
         const beatmap = await getBeatmap(
+            getLane(res),
             id !== undefined ? parseInt(id) : hash!,
         );
 

@@ -1,14 +1,17 @@
-import { MapInfo, RankedStatus } from "@rian8337/osu-base";
+import { MapInfo } from "@rian8337/osu-base";
 import { eq } from "drizzle-orm";
 import { readFile, unlink, writeFile } from "fs/promises";
 import { join } from "path";
+import { getConfig } from "../../config.js";
 import { db } from "../../database/index.js";
 import { beatmapTable } from "../../database/schema.js";
 import { DatabaseBeatmap } from "../../database/schema/DatabaseBeatmap.js";
 import { TimeConstrainedMap } from "../TimeConstrainedMap.js";
 import { computeMD5 } from "../util.js";
 import { convertMapInfoToDatabaseBeatmap } from "./beatmapConverter.js";
-import * as beatmapService from "./beatmapService.js";
+import type { Lane } from "../../osu/errors.js";
+import { getOsuGateway } from "../../osu/index.js";
+import { recheckBeatmap, recheckIntervalMs } from "./recheck.js";
 
 const beatmapFileDirectory = join(process.cwd(), "beatmaps");
 
@@ -27,15 +30,19 @@ const beatmapSetIdCache = new TimeConstrainedMap<
 >(900);
 
 /**
- * Gets a beatmap from the beatmap cache, or requests the osu! API it if it's not available.
+ * Gets a beatmap from the beatmap cache, or asks osu! if it is not available.
  *
+ * @param lane The lane of the request.
  * @param beatmapIdOrHash The beatmap ID or MD5 hash of the beatmap.
- * @param options Options for the retrieval of the beatmap.
- * @returns The beatmap, `null` if the beatmap is not found.
+ * @returns The beatmap, `null` if osu! does not have it.
+ * @throws {OsuUnavailableError} If osu! could not be asked.
  */
 export async function getBeatmap(
+    lane: Lane,
     beatmapIdOrHash: number | string,
 ): Promise<DatabaseBeatmap | null> {
+    const gateway = getOsuGateway();
+
     // Get cache from in-memory cache.
     let cache =
         (typeof beatmapIdOrHash === "number"
@@ -45,15 +52,15 @@ export async function getBeatmap(
     // Get cache from database.
     cache ??= await getBeatmapFromDatabase(beatmapIdOrHash);
 
-    // If not found, request from osu! API.
+    // If not found, ask osu!.
     if (!cache) {
-        const apiBeatmap = await MapInfo.getInformation(beatmapIdOrHash, false);
+        const apiBeatmap = await gateway.getBeatmap(lane, beatmapIdOrHash);
 
         if (!apiBeatmap) {
             return null;
         }
 
-        cache = convertMapInfoToDatabaseBeatmap(apiBeatmap);
+        cache = convertMapInfoToDatabaseBeatmap(MapInfo.from(apiBeatmap));
 
         // When retrieving with beatmap hash, the beatmap may be invalid when the new hash is retrieved.
         // In that case, invalidate the cache.
@@ -74,45 +81,50 @@ export async function getBeatmap(
         await insertBeatmapsToDatabase(cache);
     }
 
-    // For unranked beatmaps, check the status if 15 minutes have passed since the last check.
-    if (
-        cache.approved !== RankedStatus.Ranked &&
-        cache.approved !== RankedStatus.Approved &&
-        cache.last_checked < new Date(Date.now() - 900000)
-    ) {
-        const apiBeatmap = await MapInfo.getInformation(
-            cache.beatmap_id,
-            false,
-        );
+    // Re-check the status once the beatmap's status interval has passed, but only when osu!'s budget is idle:
+    // a busy or failed re-check serves the cached beatmap unchanged.
+    const recheckAfterMs = recheckIntervalMs(
+        cache.approved,
+        getConfig().recheckMinutes,
+    );
 
-        if (!apiBeatmap) {
-            // Cannot check status - invalidate for now, but do not delete existing cache.
+    if (
+        recheckAfterMs !== null &&
+        cache.last_checked.getTime() < Date.now() - recheckAfterMs
+    ) {
+        const recheck = await recheckBeatmap(gateway, lane, cache.beatmap_id);
+
+        if (recheck.kind === "gone") {
             return null;
         }
 
-        if (cache.file_md5 !== apiBeatmap.hash) {
-            // Beatmap has been updated - invalidate cache completely.
-            const oldHash = cache.file_md5;
+        if (recheck.kind === "fresh") {
+            const apiBeatmap = MapInfo.from(recheck.beatmap);
 
-            cache = convertMapInfoToDatabaseBeatmap(apiBeatmap);
+            if (cache.file_md5 !== apiBeatmap.hash) {
+                // Beatmap has been updated - invalidate cache completely.
+                const oldHash = cache.file_md5;
 
-            await invalidateBeatmapCache(oldHash, cache);
-            await insertBeatmapsToDatabase(cache);
-        } else {
-            // Update the last checked date.
-            cache.last_checked = new Date();
-            cache.approved = apiBeatmap.approved;
+                cache = convertMapInfoToDatabaseBeatmap(apiBeatmap);
 
-            await db
-                .update(beatmapTable)
-                .set({
-                    last_checked: cache.last_checked,
-                    approved: cache.approved,
-                })
-                .where(eq(beatmapTable.beatmap_id, cache.beatmap_id))
-                .catch((e: unknown) => {
-                    console.error("Error when updating beatmap status:", e);
-                });
+                await invalidateBeatmapCache(oldHash, cache);
+                await insertBeatmapsToDatabase(cache);
+            } else {
+                // Update the last checked date.
+                cache.last_checked = new Date();
+                cache.approved = apiBeatmap.approved;
+
+                await db
+                    .update(beatmapTable)
+                    .set({
+                        last_checked: cache.last_checked,
+                        approved: cache.approved,
+                    })
+                    .where(eq(beatmapTable.beatmap_id, cache.beatmap_id))
+                    .catch((e: unknown) => {
+                        console.error("Error when updating beatmap status:", e);
+                    });
+            }
         }
     }
 
@@ -124,12 +136,15 @@ export async function getBeatmap(
 }
 
 /**
- * Gets a beatmapset from the beatmap cache, or requests the osu! API it if it's not available.
+ * Gets a beatmapset from the beatmap cache, or asks osu! if it is not available.
  *
+ * @param lane The lane of the request.
  * @param id The beatmapset ID.
  * @returns A `Map` instance representing the beatmapset.
+ * @throws {OsuUnavailableError} If osu! could not be asked.
  */
 export async function getBeatmapset(
+    lane: Lane,
     id: number,
 ): Promise<Map<number, DatabaseBeatmap> | null> {
     // Check existing cache first.
@@ -137,7 +152,7 @@ export async function getBeatmapset(
 
     // If still not found or invalid, request from osu! API.
     if (!cache) {
-        const apiBeatmaps = await beatmapService.getBeatmapsetFromOsuAPI(id);
+        const apiBeatmaps = await getOsuGateway().getBeatmapset(lane, id);
 
         if (!apiBeatmaps) {
             return null;
@@ -178,12 +193,15 @@ export async function getBeatmapset(
 /**
  * Gets the beatmap file of a beatmap.
  *
+ * @param lane The lane of the request.
  * @param id The ID of the beatmap.
  * @param hashComparison The MD5 hash of the beatmap file to compare with the existing one.
  * If this is provided and the hash matches, the existing file will be returned, else the file will be re-downloaded.
  * @returns The beatmap file, `null` if the beatmap file cannot be downloaded.
+ * @throws {OsuUnavailableError} If osu! could not be asked.
  */
 export async function getBeatmapFile(
+    lane: Lane,
     id: number,
     hashComparison?: string,
 ): Promise<Buffer | null> {
@@ -213,8 +231,8 @@ export async function getBeatmapFile(
         return beatmapFile;
     }
 
-    // If there is not, request from osu! API.
-    beatmapFile = await beatmapService.getBeatmapFile(id);
+    // If there is not, ask osu!.
+    beatmapFile = await getOsuGateway().downloadFile(lane, id);
 
     if (!beatmapFile) {
         return null;
