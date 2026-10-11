@@ -1,5 +1,5 @@
 import { MapInfo } from "@rian8337/osu-base";
-import { eq } from "drizzle-orm";
+import { eq, getTableColumns, sql } from "drizzle-orm";
 import { readFile, unlink, writeFile } from "fs/promises";
 import { join } from "path";
 import { getConfig } from "../../config.js";
@@ -205,7 +205,10 @@ export async function getBeatmapFile(
     id: number,
     hashComparison?: string,
 ): Promise<Buffer | null> {
-    const beatmapFilePath = join(getConfig().beatmapFileDirectory, `${id.toString()}.osu`);
+    const beatmapFilePath = join(
+        getConfig().beatmapFileDirectory,
+        `${id.toString()}.osu`,
+    );
 
     // Check existing file first.
     let beatmapFile: Buffer | null = null;
@@ -316,10 +319,16 @@ async function invalidateBeatmapCache(
 }
 
 async function invalidateBeatmapFile(id: number) {
-    await unlink(join(getConfig().beatmapFileDirectory, `${id.toString()}.osu`)).catch(
-        () => null,
-    );
+    await unlink(
+        join(getConfig().beatmapFileDirectory, `${id.toString()}.osu`),
+    ).catch(() => null);
 }
+
+const conflictUpdate = Object.fromEntries(
+    Object.entries(getTableColumns(beatmapTable))
+        .filter(([, column]) => !column.primary)
+        .map(([key, column]) => [key, sql.raw(`excluded."${column.name}"`)]),
+);
 
 export async function insertBeatmapsToDatabase(...beatmaps: DatabaseBeatmap[]) {
     if (beatmaps.length === 0) {
@@ -329,6 +338,11 @@ export async function insertBeatmapsToDatabase(...beatmaps: DatabaseBeatmap[]) {
     await db
         .insert(beatmapTable)
         .values(beatmaps)
+        // Concurrent requests for the same uncached beatmap race to insert it, so the latest data wins.
+        .onConflictDoUpdate({
+            target: beatmapTable.beatmap_id,
+            set: conflictUpdate,
+        })
         .catch((e: unknown) => {
             console.error("Error when inserting beatmaps:", e);
         });
