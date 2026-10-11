@@ -1,0 +1,296 @@
+# Beatmap Service Rewrite Design
+
+Date: 2026-10-11
+Status: Draft, pending review
+
+## Context
+
+This service is the single point of entry for beatmap metadata and `.osu` files across the osu!droid infrastructure: the game, the Discord bot, websites, the old dpp backend, and the new dpp processors. It caches beatmaps in memory, in Postgres, and as `.osu` files on disk, and calls osu! (API v1) on a cache miss. Every osu! call goes through `OsuGateway` and a two-lane `RateLimiter` (see `2026-10-10-osu-rate-limits-design.md`, merged and deployed 2026-10-11).
+
+The code is a flat set of module-level functions and singletons (`getConfig()`, `getOsuGateway()`, `db`), which makes the storage logic hard to test: only the gateway, limiter, config, and helpers have tests. This rewrite restructures it in the style of `~/Projects/dpp-processor-backend-new` (dependency injection, interfaces at every boundary, unit/integration/e2e tests), fixes the weaknesses listed under **Improvements**, and folds in two open items: the UTC+8 dates in old rows and route-level id/hash validation.
+
+**UTC+8 dates.** Rows cached long ago store their dates shifted by +8 hours: beatmap 75's `submit_date` is stored as 01:46:31, osu! returns 17:46:31 (the API returns UTC). The likely cause: the date columns are `timestamp` without time zone, and rows written before Drizzle (2025-04) were written in UTC+8 local time. Ranked, approved, and loved maps are never re-checked, so they were never corrected, and re-checks of other maps only update `approved` and `last_checked`.
+
+**The osu! file dump.** osu! publishes a monthly dump of `.osu` files (`YYYY_MM_01_osu_files.tar.bz2`). Inspected with the September 2026 dump: 235,333 files in one flat directory named `<beatmap_id>.osu`, covering all four game modes, with no ranked status in the files. Old format versions (v8, v9) have no `BeatmapID` or `BeatmapSetID` lines, so the file name is the only reliable id. The dump is a source of files, not of metadata.
+
+## Goals
+
+- The same HTTP contract as today, plus validation: every caller keeps working unchanged, and malformed input gets `400`.
+- Keep the rate-limit behaviour exactly: two lanes, `503` with `Retry-After` when osu! cannot be asked, and `404` only for a real "not found" (the dpp `BeatmapServiceClient` reads a `404` with a `{ error: string }` body as "not found").
+- The dpp structure: `I*` interfaces and tsyringe tokens at every DI boundary, plumbing copied from `@dpp/server`, tooling matching dpp (tsdown, vitest, oxlint, oxfmt, Drizzle migrations, PGlite in tests).
+- Cache whatever can be cached, including whole beatmapsets.
+- Correct the UTC+8 dates, and make the schema unable to drift again.
+- Populate the cache from osu!'s file dump without downloading files.
+- Current versions of every dependency.
+
+## Non-goals
+
+- Moving to osu! API v2.
+- New or v2 routes. The contract is kept, not redesigned.
+- Running several service processes: one process owns the rate limiter and the memory caches, as today.
+- Accepting the key in a header. Nothing needs it.
+- Merging into the dpp monorepo. The game, the bot, and websites use this service too; it stays its own repository.
+
+## Repository layout
+
+One package (`osu-beatmap-processor`), not a workspace:
+
+```
+src/
+  index.ts              server entry (dist/index.mjs)
+  cli.ts                CLI entry (dist/cli.mjs)
+  server/               copied from @dpp/server, same file names
+  config/               zod-parsed environment → typed Config
+  controllers/          BeatmapController, HealthController
+  middleware/           key → lane
+  services/             BeatmapService, BeatmapsetService, BeatmapFileService (+ I* interfaces)
+  repositories/         BeatmapRepository, BeatmapsetRepository, CursorRepository, BeatmapFileStore (+ I* interfaces)
+  osu/                  OsuGateway, RateLimiter, errors (+ IOsuGateway)
+  beatmaps/             pure helpers: v1 converter, validation, re-check intervals, MD5
+  cache/                TtlLruCache
+  cli/                  arguments, commands/{populateCache,fixDates}, SinceWalker
+  dependencies/         tokens, register
+  database/             schema, types
+drizzle/                migrations
+tests/{unit,integration,e2e}/
+```
+
+`src/server/` holds the parts of `@dpp/server` this service uses: the decorators (`Controller`, `Get`, `Injectable`), the router, `registerInjectables`, `BaseController`, `APIError`, `GracefulServer`, shutdown, logging (prefix `[beatmap-service]`), `loadEnvironmentVariables`, `DatabaseConnection`, and the test helpers (PGlite, ports, process). File names and contents stay as close to dpp's as possible so that `diff -r` against `packages/server/src` shows real drift only. Two deliberate differences: the error handlers produce this service's `{ error: string }` body, and there is no JSON not-found handler (see **HTTP contract**).
+
+## Tooling and dependencies
+
+| Today                                       | After                                                     |
+| ------------------------------------------- | --------------------------------------------------------- |
+| Express 4 + `express-async-handler`         | Express 5 (async handlers built in)                       |
+| zod 3                                       | zod 4                                                     |
+| drizzle-orm 0.41, drizzle-kit 0.30          | drizzle-orm 0.45, drizzle-kit 0.31                        |
+| `@rian8337/osu-base` 4.0.0-beta.100         | 4.0.0-beta.102                                            |
+| `tsc` build, TypeScript 5                   | tsdown build, TypeScript 7 for typechecking               |
+| ESLint + Prettier                           | oxlint + oxfmt (dpp's `.oxlintrc.json`, `.oxfmtrc.json`)  |
+| `dotenv`                                    | Node's `loadEnvFile` via `loadEnvironmentVariables`       |
+| `pg` + `pg-native`                          | `pg` only                                                 |
+| no DI                                       | `tsyringe` + `reflect-metadata`                           |
+
+Kept: `cors`, `p-queue`, vitest 5, supertest. New for tests: `@electric-sql/pglite`, `@electric-sql/pglite-socket`. Every version is the current one when the plan is executed; the table names the minimum.
+
+Scripts follow dpp: `build`, `dev`, `typecheck`, `test`, `test:e2e`, `lint`, `format`, `db:generate`, `db:baseline`.
+
+### Deployment changes
+
+- The entry point moves from `dist/index.js` to `dist/index.mjs`; the PM2 config changes accordingly.
+- Environment: `.env.${NODE_ENV}` (default `development`), as in dpp. Production runs with `NODE_ENV=production` and `.env.production`. Variable names are unchanged.
+- The server applies pending migrations at startup. Before the first deploy, run `pnpm db:baseline` once against the production database (see **Migrations**).
+
+## Architecture
+
+```
+cors → /api/beatmap router → key middleware (lane) → BeatmapController
+                                                      │
+              ┌───────────────────────────────────────┼─────────────────────┐
+         IBeatmapService                       IBeatmapsetService     IBeatmapFileService
+              │                                        │                     │
+   ┌──────────┼───────────┐                 ┌──────────┼──────┐        ┌─────┴──────┐
+memory   IBeatmapRepository  IOsuGateway   memory  IBeatmapsetRepository  IBeatmapFileStore
+cache                        └ RateLimiter cache
+```
+
+### Interfaces and tokens
+
+Every class that does I/O, or that another class depends on, is an `@Injectable(token)` class behind an `I*` interface; consumers receive the interface by token. Unit tests replace any of them with a fake.
+
+| Interface               | Implementation          | Responsibility                                                                                   |
+| ----------------------- | ----------------------- | ------------------------------------------------------------------------------------------------ |
+| `IOsuGateway`           | `OsuGateway`            | The only code that calls osu!. Ported unchanged, plus `getBeatmapsSince` (see **Since walker**). |
+| `IBeatmapRepository`    | `BeatmapRepository`     | `beatmap` rows: find by id or hash, upsert, update, delete.                                      |
+| `IBeatmapsetRepository` | `BeatmapsetRepository`  | `beatmapset` completeness rows, and the set transaction.                                         |
+| `ICursorRepository`     | `CursorRepository`      | CLI resume points.                                                                               |
+| `IBeatmapFileStore`     | `BeatmapFileStore`      | `.osu` files: read, atomic write, delete.                                                        |
+| `IBeatmapService`       | `BeatmapService`        | One beatmap: memory → database → osu!, re-checks, invalidation on a hash change.                 |
+| `IBeatmapsetService`    | `BeatmapsetService`     | One set: memory → complete set in database → osu!, re-checks.                                    |
+| `IBeatmapFileService`   | `BeatmapFileService`    | A beatmap's `.osu` file: store → osu!, MD5 checks, max-combo backfill.                           |
+
+`RateLimiter` stays a concrete class constructed with the gateway (its tests exercise it directly); the gateway receives it through its constructor. The configuration, the database, and the limiter are runtime instances registered at startup, as in the processor's `registerDependencies`.
+
+Pure logic stays plain functions with direct unit tests: the v1 converter, id/hash validation, `resolveLane`, re-check intervals, MD5, and the since walker's paging rule.
+
+### Lanes
+
+`resolveLane` is ported unchanged: `BULK_SERVER_KEY` gives the bulk lane; `INTERNAL_SERVER_KEY`, or any key when it is unset, gives the priority lane; anything else is `401`. The middleware stores the lane in typed request context (as in dpp's broker `requestContext`) instead of today's `WeakMap`.
+
+## HTTP contract
+
+All routes live under `/api/beatmap`, authenticate with `?key=`, and answer errors as `{ error: string }`.
+
+### `GET /getbeatmap?id=<id>` or `?hash=<md5>`
+
+- `200`: the v1 `OsuAPIResponse` object, converted from the stored row exactly as today.
+- `404 { error: "Beatmap not found" }`: osu! has no such standard-mode beatmap.
+- When both parameters are given, `id` wins.
+
+### `GET /getbeatmapfile?id=<id>` or `?hash=<md5>`
+
+- `200`: the file, `Content-Type: text/plain`, `Content-Disposition: attachment; filename=<id>.osu`.
+- `404 { error: "Beatmap not found" }`: no such standard-mode beatmap.
+- `404 { error: "Beatmap file not found" }`: the beatmap exists but osu! has no file for it.
+- **Changed:** both `id` and `hash` resolve the beatmap's metadata first (memory → database → osu!), so every served file is checked against `file_md5` and stored next to its row. A non-standard-mode id now answers `404 "Beatmap not found"` instead of serving the file, and an id with no stored row costs one API call before the download.
+
+### `GET /getbeatmaps?id=<beatmapset id>`
+
+- `200`: an array of the set's standard-mode beatmaps (possibly empty when the set has only other modes, as today).
+- `404 { error: "Beatmapset not found" }`.
+
+### `GET /health`
+
+- **New.** No key. `200 { status: "ok" }` when the database answers a trivial query, otherwise `503 { error: "Database unavailable" }`.
+
+### Errors, for every route
+
+| Status | Body                                     | When                                                                                                     |
+| ------ | ---------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `400`  | `{ error: "Missing id or hash" }`        | Neither parameter (for `/getbeatmaps`: `"Missing id"`). Fixes today's mismatched messages.               |
+| `400`  | `{ error: "Invalid id" }`                | `id` is not `^\d+$`, or is 0 or above 2³¹−1. **New.**                                                    |
+| `400`  | `{ error: "Invalid hash" }`              | `hash` is not 32 hex characters. Accepted in any case, lowercased before use. **New.**                   |
+| `401`  | `{ error: "Unauthorized" }`              | Unknown key.                                                                                             |
+| `503`  | `{ error }` + `Retry-After`              | osu! cannot be asked (limiter refusal, `429`, failure), as today; or the database failed. **Database: new.** |
+| `500`  | `{ error: "Internal server error" }`     | Anything unhandled. Today this is Express's HTML page.                                                   |
+
+**Unknown routes keep Express's default plain-text `404`, on purpose.** The dpp `BeatmapServiceClient` reads any `404` with a `{ error: string }` body as "beatmap not found"; a wrong path or base URL must not look like that. dpp's JSON `notFoundHandler` is therefore not copied.
+
+## Caching
+
+### Memory
+
+`TtlLruCache<K, V>`: a bounded LRU (dpp's `LruCache`) whose entries also expire 15 minutes after being set. Values are frozen; an update replaces the entry and never mutates a shared object. Three caches, each bounded by a configurable entry count:
+
+| Cache       | Key            | Value                  | Default size (`*_CACHE_SIZE`) |
+| ----------- | -------------- | ---------------------- | ----------------------------- |
+| by id       | beatmap id     | beatmap row            | 10,000                        |
+| by hash     | MD5            | beatmap row            | 10,000                        |
+| sets        | beatmapset id  | the set's beatmap rows | 2,000                         |
+
+### Single beatmaps (`BeatmapService.get(lane, id | hash)`)
+
+The current logic, ported:
+
+1. Memory cache, then the database, then osu! (`getBeatmap`). A miss at osu! is `null` (→ `404`).
+2. On a lookup by hash that osu! answers: if a stored row with the same beatmap id has a different hash, the beatmap was updated. Invalidate: drop the old row, its file, its memory entries, and the set's `beatmapset` row (see below), then store the new row.
+3. Re-check: once the status's interval has passed (ranked, approved, and loved: never), ask osu! only if the budget is idle (`tryGetBeatmapNow`). A busy or failed re-check serves the cached row unchanged. Gone → `null`. A new hash → invalidate as in step 2. Same hash → **changed:** update every mutable column from osu!'s answer (status, the four dates, counts, ratings, difficulty values, packs, `last_checked`), not only `approved` and `last_checked`. This is how non-ranked rows with UTC+8 dates heal.
+
+Concurrent calls for the same beatmap share one in-flight lookup, keyed by beatmap, regardless of lane (**new**; today only the gateway's per-lane request sharing exists). When a priority call joins a lookup started by the bulk lane, it gets the bulk lookup's result or error.
+
+### Beatmapsets (`BeatmapsetService.get(lane, setId)`)
+
+**New: sets are stored in Postgres.** Rows alone cannot tell whether a set is complete (a single `/getbeatmap` call stores one difficulty), so a new table records completeness:
+
+```
+beatmapset (beatmapset_id integer PK, last_checked timestamptz NOT NULL)
+```
+
+A `beatmapset` row means "every standard-mode beatmap of this set was stored at `last_checked`".
+
+1. Memory cache.
+2. If a `beatmapset` row exists: read the set's rows from `beatmap` and serve them, unless the set is due for a re-check.
+3. Otherwise, or when due: ask osu! (`getBeatmapset`). For a re-check, only when the budget is idle; a busy or failed re-check serves the stored set. A miss is `null` (→ `404`).
+4. On an answer, in one transaction: upsert every standard-mode beatmap; delete stored rows of the set that osu! no longer lists; write the `beatmapset` row with `last_checked = now`. After the commit, delete the files of removed or rehashed beatmaps and refresh the memory caches.
+
+Re-check interval: that of the set's most volatile status (a set containing a qualified beatmap is re-checked at the qualified interval; an all-ranked set never).
+
+When `BeatmapService` invalidates a beatmap or finds it gone, it deletes the `beatmapset` row of its set, so the next set request goes back to osu! instead of serving a stale set.
+
+### Files (`BeatmapFileService.get(lane, beatmap)`)
+
+The caller passes the resolved beatmap row, so `file_md5` is always known.
+
+1. Read `<BEATMAP_FILE_DIRECTORY>/<id>.osu`. If its MD5 matches `file_md5`, serve it. A mismatched file is deleted.
+2. Otherwise download it (`downloadFile`). osu! has no file → `null` (→ `404 "Beatmap file not found"`).
+3. **New:** check the downloaded file's MD5. On a mismatch, the beatmap was updated after its metadata was fetched: ask `BeatmapService` to refresh the beatmap from osu! once (on the same lane), and if the new hash matches the file, store both; otherwise answer `503` (osu! is serving inconsistent data; retrying later is correct) without caching the file.
+4. **New:** files are written atomically: to `<id>.osu.<random>.tmp` in the same directory, then renamed.
+5. Concurrent calls for the same beatmap share one in-flight download, regardless of lane.
+6. Max-combo backfill, kept: when the row's `max_combo` is null, decode the file and store its max combo. It runs after the response is sent; a failure is logged.
+
+### Database failures
+
+**Changed:** today a failed database read is logged and treated as a cache miss, so a database outage turns every request into an osu! call and exhausts the budget within seconds. Now:
+
+- A failed read throws `DatabaseUnavailableError`, answered as `503 { error: "Database unavailable" }` with `Retry-After: 5`, without calling osu!.
+- A failed write (upsert, re-check update, max-combo backfill) is logged; the request is still served from the data in hand.
+
+## Database
+
+### Schema
+
+- `beatmap`: today's columns and indexes. `submit_date`, `approved_date`, `last_update`, and `last_checked` become `timestamptz`.
+- `beatmapset`: new (see **Beatmapsets**).
+- `cli_cursor (command text PK, cursor timestamptz NOT NULL)`: replaces `populate (id integer)`; one resume point per CLI command.
+
+The Drizzle schema uses `casing: "snake_case"`, as `DatabaseConnection` sets it; column names are unchanged.
+
+### Migrations
+
+- `0000_baseline`: exactly today's `tables.sql` (the `beatmap` table with its indexes, and `populate`).
+- `0001_rewrite`: the four columns to `timestamptz` with `USING <column> AT TIME ZONE 'UTC'` (stored values keep their instants; wrong values are corrected by `fix-dates`, not by the migration); create `beatmapset` and `cli_cursor`; drop `populate`.
+
+`pnpm db:baseline` records `0000_baseline` as applied in Drizzle's migration table without running it. It is run once against each existing database before the first deploy; a fresh database runs both migrations normally. `tables.sql` and `table_rollback.sql` are removed.
+
+## CLI
+
+`node dist/cli.mjs <command> [options]`, the same configuration and environment as the server, and its own `RateLimiter` instance on the bulk lane (a separate process, as `populateCache.ts` is today). The README keeps the rule: run CLI commands while the service is stopped, or give them their own `OSU_*_RATE_LIMIT` settings so that both stay under osu!'s limit.
+
+### Since walker
+
+osu! API v1 `get_beatmaps?since=<UTC datetime>&m=0&limit=500` returns up to 500 standard-mode beatmaps (no converts) approved from `since` onwards, ordered by approval date: every ranked, approved, loved, and qualified map. Walking it from 2007-01-01 to now covers all of them in roughly 500 calls, instead of one call per beatmap or set.
+
+- `OsuGateway.getBeatmapsSince(lane, since)` makes one call through the limiter.
+- `SinceWalker` loops: request from the cursor; hand the page to the command; set the cursor to the page's last approval date, and save it after the command has processed the page. The next page therefore repeats the boundary timestamp, so maps tied at a page boundary are not lost; upserts make the overlap harmless.
+- If a full page ends on the same timestamp it started with (500 maps sharing one approval date), the cursor advances by one second and the walker logs the skipped timestamp.
+- The walk ends on a page with fewer than 500 entries.
+- Limiter refusals and `429`s wait out `Retry-After` and retry the same page, as `populateCache.ts` does today. Any other failure stops the command with a non-zero exit; rerunning it resumes from the cursor.
+- Whether osu! compares `since` inclusively or exclusively is verified against the live API before the walker is built (a plan step); the overlap rule is correct either way.
+
+### `populate-cache [--files <dir>] [--move] [--restart]`
+
+Walks with cursor `populate-cache`. For each page:
+
+- Upserts the ranked and approved beatmaps (as today; loved and qualified are skipped).
+- With `--files <dir>` (an extracted osu! file dump, any path): for each upserted beatmap, if `<dir>/<beatmap_id>.osu` exists and its MD5 matches `file_md5`, copy it into `BEATMAP_FILE_DIRECTORY` (atomically, as the file store does), or move it with `--move`. Missing and mismatched files are left to be downloaded on demand.
+- Prints running and final totals: beatmaps stored, files copied, files missing, files mismatched.
+
+It never marks sets complete: the walk returns beatmaps, not whole sets. `--restart` clears the cursor.
+
+### `fix-dates [--restart]`
+
+Walks with cursor `fix-dates`. For each beatmap in a page with status ranked, approved, or loved, it updates the four date columns and `approved` of an existing row; it never inserts. This corrects every row that is never re-checked, which is where the UTC+8 values are stuck; other rows heal at their next re-check (see **Single beatmaps**). It prints the number of rows updated and the number whose dates changed.
+
+## Configuration
+
+Unchanged variables: `POSTGRES_*`, `EXPRESS_PORT`, `OSU_API_KEY`, `INTERNAL_SERVER_KEY`, `BULK_SERVER_KEY`, `OSU_API_RATE_LIMIT`, `OSU_FILE_RATE_LIMIT`, `OSU_TOTAL_RATE_LIMIT`, `BULK_SHARE`, `PRIORITY_MAX_WAIT_MS`, `BULK_MAX_WAIT_MS`, `OSU_API_BASE_URL`, `OSU_FILE_BASE_URL`, `BEATMAP_FILE_DIRECTORY`, `RECHECK_*_MINUTES`.
+
+New: `BEATMAP_CACHE_SIZE` (default 10,000; applies to the id and hash caches) and `BEATMAPSET_CACHE_SIZE` (default 2,000).
+
+The PostgreSQL variables join the zod schema (today they are read raw in `database/index.ts`), so a missing one fails at startup with the variable's name. The configuration is loaded once in each entry point and registered in the container; nothing reads `process.env` afterwards.
+
+## Runtime
+
+- `GracefulServer` and the shutdown helpers: on `SIGTERM`/`SIGINT`, stop accepting connections, let in-flight requests finish (with a timeout), close the database pool.
+- Every log line carries the `[beatmap-service]` prefix.
+- Startup order: load the environment, parse the configuration (fail fast, as today), connect and migrate the database, create the limiter and the container, listen.
+
+## Testing
+
+**Golden contract (written first).** Before any rewrite code, record one response per route and status from the **current** service against a stub osu! server: `200` bodies and headers for all three routes, every `404` body, `401`, `503` with `Retry-After`. The new service must produce the same bodies and headers, except where this spec marks a change.
+
+**Unit** (`tests/unit`, no I/O): config parsing; `resolveLane`; id/hash validation; re-check intervals for beatmaps and sets; the v1 converter in both directions, including timestamptz round-trips; `TtlLruCache`; `RateLimiter` and `OsuGateway`, ported with their current tests plus `getBeatmapsSince`; `BeatmapService`, `BeatmapsetService`, and `BeatmapFileService` against fake repositories, store, and gateway (cache order, invalidation, completeness, busy re-checks, re-checks rewriting dates, lane-independent sharing, MD5 checks after download, database failures → `503`, failed writes still served); the since walker (cursor, boundary overlap, a full page with one timestamp, retry after a refusal).
+
+**Integration** (`tests/integration`, PGlite and temporary directories): repositories against the real migrations, including a row written as `timestamp` and migrated; the set transaction; `db:baseline` against a database created from `tables.sql`; the rollback script restoring a schema the old build reads; the controllers through supertest for every status and body, including the plain-text unknown-route `404` and `/health`; both CLI commands against a stub osu! server and a fake dump directory with a valid, a missing, and a mismatched file.
+
+**E2E** (`tests/e2e`): the built `dist/index.mjs` against PGlite over a socket and a stub osu! server, asserting the dpp `BeatmapServiceClient` contract (the `beatmap_id` and `file_md5` fields, a `404` with a `{ error: string }` body, a `503` with `Retry-After`) and graceful shutdown. Servers are stopped by their recorded PID.
+
+**Done when:** `pnpm test`, `pnpm test:e2e`, `pnpm typecheck`, `pnpm lint`, and `pnpm format --check` pass, and a local smoke run of the built server answers the golden requests.
+
+## Rollout
+
+1. Stop the service. `pnpm db:baseline`, then start the new build (`dist/index.mjs`, `NODE_ENV=production`, `.env.production`), which applies `0001_rewrite`.
+2. With the service stopped or with split budgets: `fix-dates`, then `populate-cache --files <extracted dump>`.
+3. Carried over from the rate-limit rollout: set `BULK_SERVER_KEY` as `BEATMAP_SERVICE_KEY` on every dpp processor, and on the old dpp backend while it recalculates.
+
+Rolling back: the old build cannot read `timestamptz` columns (its Drizzle `timestamp()` columns append `+0000` to the value it reads, which yields invalid dates). `docs/rollback/0001_rewrite.down.sql` converts the four columns back with `USING <column> AT TIME ZONE 'UTC'` and recreates `populate`; run it before starting the old build. The new tables can stay; the old build ignores them. The down script is covered by an integration test.
