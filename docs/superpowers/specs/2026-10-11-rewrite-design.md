@@ -73,6 +73,8 @@ tests/{unit,integration,e2e}/
 
 Kept: `cors`, `p-queue`, vitest 5, supertest. New for tests: `@electric-sql/pglite`, `@electric-sql/pglite-socket`. Every version is the current one when the plan is executed; the table names the minimum.
 
+Module resolution follows dpp: the TypeScript configuration extends dpp's base settings (`moduleResolution: "bundler"`, `noEmit`, `allowImportingTsExtensions`, legacy decorators with metadata for tsyringe), and tsdown bundles the source into `dist/index.mjs` and `dist/cli.mjs`. Node loads only the bundles, so imports carry no `.js` extension. Imports that would climb a directory (`../`) use the aliases `@/*` (`src/*`) and `@test/*` (`tests/*`) instead, which tsdown and vitest's `resolve.alias` resolve; `./` imports stay relative, as in dpp.
+
 Scripts follow dpp: `build`, `dev`, `typecheck`, `test`, `test:e2e`, `lint`, `format`, `db:generate`, `db:baseline`.
 
 ### Deployment changes
