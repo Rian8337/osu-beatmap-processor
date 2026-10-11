@@ -246,7 +246,7 @@ The caller passes the resolved beatmap row, so `file_md5` is always known.
 
 ### Schema
 
-- `beatmap`: today's columns and indexes. `submit_date`, `approved_date`, `last_update`, and `last_checked` become `timestamptz`.
+- `beatmap`: today's columns as they exist in production (`pg_dump --schema-only`, 2026-10-11): the four flag columns (`storyboard`, `video`, `download_unavailable`, `audio_unavailable`) are `boolean`, not the `smallint` the current Drizzle schema claims, and the rewrite's schema says `boolean`. Indexes `beatmapset_id_idx` and `beatmap_md5_idx`; the redundant `beatmap_id_idx` (it duplicates the primary key) is dropped. `submit_date`, `approved_date`, `last_update`, and `last_checked` become `timestamptz`.
 - `beatmapset`: new (see **Beatmapsets**).
 - `cli_cursor (command text PK, cursor timestamptz NOT NULL)`: replaces `populate (id integer)`; one resume point per CLI command.
 - `api_keys`: new (see **Access**).
@@ -255,8 +255,8 @@ The Drizzle schema uses `casing: "snake_case"`, as `DatabaseConnection` sets it;
 
 ### Migrations
 
-- `0000_baseline`: exactly today's `tables.sql` (the `beatmap` table with its indexes, and `populate`).
-- `0001_rewrite`: the four columns to `timestamptz` with `USING <column> AT TIME ZONE 'UTC'` (stored values keep their instants; wrong values are corrected by `fix-dates`, not by the migration); create `beatmapset`, `cli_cursor`, and `api_keys`; drop `populate`.
+- `0000_baseline`: exactly the production `beatmap` table from the schema dump, with its primary key and its three indexes. Production has no `populate` table (`populateCache.ts` never ran there), so the baseline has none.
+- `0001_rewrite`: the four columns to `timestamptz` with `USING <column> AT TIME ZONE 'UTC'` (stored values keep their instants; wrong values are corrected by `fix-dates`, not by the migration); drop `beatmap_id_idx`; create `beatmapset`, `cli_cursor`, and `api_keys`; `DROP TABLE IF EXISTS populate` (local databases that ran `populateCache.ts` have it).
 
 `pnpm db:baseline` records `0000_baseline` as applied in Drizzle's migration table without running it. It is run once against each existing database before the first deploy; a fresh database runs both migrations normally. `tables.sql` and `table_rollback.sql` are removed.
 
@@ -322,7 +322,7 @@ The PostgreSQL variables join the zod schema (today they are read raw in `databa
 
 **Unit** (`tests/unit`, no I/O): config parsing; key hashing; the key snapshot (authenticate, built-in keys, revoked keys, reload keeping the previous snapshot on failure, overlapping reloads); the auth middleware (header, query, both differing, anonymous, `ANON_RATE_LIMIT=0`); the rate-limit middleware (per key, per IP, unlimited, the warning line); id/hash validation; re-check intervals for beatmaps and sets; the v1 converter in both directions, including timestamptz round-trips; `TtlLruCache`; `RateLimiter` and `OsuGateway`, ported with their current tests plus `getBeatmapsSince`; `BeatmapService`, `BeatmapsetService`, and `BeatmapFileService` against fake repositories, store, and gateway (cache order, invalidation, completeness, busy re-checks, re-checks rewriting dates, lane-independent sharing, MD5 checks after download, database failures → `503`, failed writes still served); the since walker (cursor, boundary overlap, a full page with one timestamp, retry after a refusal).
 
-**Integration** (`tests/integration`, PGlite and temporary directories): repositories against the real migrations, including a row written as `timestamp` and migrated; the set transaction; `db:baseline` against a database created from `tables.sql`; the rollback script restoring a schema the old build reads; the controllers through supertest for every status and body, including the plain-text unknown-route `404`, `/health`, and `401`/`429` for database keys, built-in keys, and anonymous callers; the `key` commands against PGlite; the populate and fix-dates commands against a stub osu! server and a fake dump directory with a valid, a missing, and a mismatched file.
+**Integration** (`tests/integration`, PGlite and temporary directories): repositories against the real migrations, including a row written as `timestamp` and migrated; the set transaction; `db:baseline` against a database created from the production schema dump; the rollback script restoring a schema the old build reads; the controllers through supertest for every status and body, including the plain-text unknown-route `404`, `/health`, and `401`/`429` for database keys, built-in keys, and anonymous callers; the `key` commands against PGlite; the populate and fix-dates commands against a stub osu! server and a fake dump directory with a valid, a missing, and a mismatched file.
 
 **E2E** (`tests/e2e`): the built `dist/index.mjs` against PGlite over a socket and a stub osu! server, asserting the dpp `BeatmapServiceClient` contract (the `beatmap_id` and `file_md5` fields, a `404` with a `{ error: string }` body, a `503` with `Retry-After`) and graceful shutdown. Servers are stopped by their recorded PID.
 
@@ -330,10 +330,10 @@ The PostgreSQL variables join the zod schema (today they are read raw in `databa
 
 ## Rollout
 
-1. Stop the service. `pnpm db:baseline`, then start the new build (`dist/index.mjs`, `NODE_ENV=production`, `.env.production`), which applies `0001_rewrite`.
+1. Stop the service. Check that `POSTGRES_USERNAME` owns the `beatmap` table, since the migration alters it. `pnpm db:baseline`, then start the new build (`dist/index.mjs`, `NODE_ENV=production`, `.env.production`), which applies `0001_rewrite`.
 2. With the service stopped or with split budgets: `fix-dates`, then `populate-cache --files <extracted dump>`.
 3. Carried over from the rate-limit rollout: set `BULK_SERVER_KEY` as `BEATMAP_SERVICE_KEY` on every dpp processor, and on the old dpp backend while it recalculates.
 4. Set `TRUST_PROXY` to match the reverse proxy before exposing the service, and choose `ANON_RATE_LIMIT`. Create database keys for public clients with `key create`; existing callers keep their built-in keys.
 5. Check that `INTERNAL_SERVER_KEY` is set in production: if it was unset, every caller had the priority lane until now, and after this change they become anonymous (bulk lane, limited per IP) unless they get a key.
 
-Rolling back: the old build cannot read `timestamptz` columns (its Drizzle `timestamp()` columns append `+0000` to the value it reads, which yields invalid dates). `docs/rollback/0001_rewrite.down.sql` converts the four columns back with `USING <column> AT TIME ZONE 'UTC'` and recreates `populate`; run it before starting the old build. The new tables can stay; the old build ignores them. The down script is covered by an integration test.
+Rolling back: the old build cannot read `timestamptz` columns (its Drizzle `timestamp()` columns append `+0000` to the value it reads, which yields invalid dates). `docs/rollback/0001_rewrite.down.sql` converts the four columns back with `USING <column> AT TIME ZONE 'UTC'` and recreates `beatmap_id_idx`; run it before starting the old build. The new tables can stay; the old build ignores them. The down script is covered by an integration test.
