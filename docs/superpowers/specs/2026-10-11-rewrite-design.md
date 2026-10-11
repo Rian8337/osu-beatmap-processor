@@ -49,7 +49,7 @@ src/
   repositories/         BeatmapRepository, BeatmapsetRepository, CursorRepository, KeyRepository, BeatmapFileStore (+ I* interfaces)
   osu/                  OsuGateway, RateLimiter, errors (+ IOsuGateway)
   beatmaps/             pure helpers: v1 converter, validation, re-check intervals, MD5
-  cache/                TtlLruCache
+  cache/                LruCache (dpp's, with expiry)
   cli/                  arguments, table, commands/{populateCache,fixDates,key}, SinceWalker
   dependencies/         tokens, register
   database/             schema, types
@@ -181,13 +181,13 @@ All routes live under `/api/beatmap`, authenticate as described under **Access**
 | `503`  | `{ error }` + `Retry-After`              | osu! cannot be asked (limiter refusal, `429`, failure), as today; or the database failed. **Database: new.** |
 | `500`  | `{ error: "Internal server error" }`     | Anything unhandled. Today this is Express's HTML page.                                                   |
 
-**Unknown routes keep Express's default plain-text `404`, on purpose.** The dpp `BeatmapServiceClient` reads any `404` with a `{ error: string }` body as "beatmap not found"; a wrong path or base URL must not look like that. dpp's JSON `notFoundHandler` is therefore not copied.
+**Unknown routes keep Express's default HTML `404`, on purpose.** The dpp `BeatmapServiceClient` reads any `404` with a `{ error: string }` body as "beatmap not found"; a wrong path or base URL must not look like that. dpp's JSON `notFoundHandler` is therefore not copied.
 
 ## Caching
 
 ### Memory
 
-`TtlLruCache<K, V>`: a bounded LRU (dpp's `LruCache`) whose entries also expire 15 minutes after being set. Values are frozen; an update replaces the entry and never mutates a shared object. Three caches, each bounded by a configurable entry count:
+`LruCache<K, V>`, copied from dpp's processor: a bounded LRU whose entries also expire 15 minutes after being set. Values are frozen; an update replaces the entry and never mutates a shared object. Three caches, each bounded by a configurable entry count:
 
 | Cache       | Key            | Value                  | Default size (`*_CACHE_SIZE`) |
 | ----------- | -------------- | ---------------------- | ----------------------------- |
@@ -269,11 +269,11 @@ The Drizzle schema uses `casing: "snake_case"`, as `DatabaseConnection` sets it;
 osu! API v1 `get_beatmaps?since=<UTC datetime>&m=0&limit=500` returns up to 500 standard-mode beatmaps (no converts) approved from `since` onwards, ordered by approval date: every ranked, approved, loved, and qualified map. Walking it from 2007-01-01 to now covers all of them in roughly 500 calls, instead of one call per beatmap or set.
 
 - `OsuGateway.getBeatmapsSince(lane, since)` makes one call through the limiter.
-- `SinceWalker` loops: request from the cursor; hand the page to the command; set the cursor to the page's last approval date, and save it after the command has processed the page. The next page therefore repeats the boundary timestamp, so maps tied at a page boundary are not lost; upserts make the overlap harmless.
-- If a full page ends on the same timestamp it started with (500 maps sharing one approval date), the cursor advances by one second and the walker logs the skipped timestamp.
+- `SinceWalker` loops: request from the cursor; hand the page to the command; move the cursor to **one second before** the page's last approval date, and save it after the command has processed the page. Pages therefore overlap by the maps of their last second, so maps tied at a page boundary are not lost whether osu! compares `since` inclusively or exclusively; upserts make the overlap harmless.
+- If that would not move the cursor forward (a full page within one second), the cursor moves to the page's last approval date, or one second past the current cursor if that is later, and the walker logs that maps at that boundary may have been skipped.
 - The walk ends on a page with fewer than 500 entries.
 - Limiter refusals and `429`s wait out `Retry-After` and retry the same page, as `populateCache.ts` does today. Any other failure stops the command with a non-zero exit; rerunning it resumes from the cursor.
-- Whether osu! compares `since` inclusively or exclusively is verified against the live API before the walker is built (a plan step); the overlap rule is correct either way.
+- Before the walker is built, a plan step checks against the live API that `since` accepts this date format and returns pages in approval-date order, and that a downloaded `.osu` file's MD5 equals its `file_md5` (the file service relies on it).
 
 ### `populate-cache [--files <dir>] [--move] [--restart]`
 
@@ -320,9 +320,9 @@ The PostgreSQL variables join the zod schema (today they are read raw in `databa
 
 **Golden contract (written first).** Before any rewrite code, record one response per route and status from the **current** service against a stub osu! server: `200` bodies and headers for all three routes, every `404` body, `401`, `503` with `Retry-After`. The new service must produce the same bodies and headers, except where this spec marks a change.
 
-**Unit** (`tests/unit`, no I/O): config parsing; key hashing; the key snapshot (authenticate, built-in keys, revoked keys, reload keeping the previous snapshot on failure, overlapping reloads); the auth middleware (header, query, both differing, anonymous, `ANON_RATE_LIMIT=0`); the rate-limit middleware (per key, per IP, unlimited, the warning line); id/hash validation; re-check intervals for beatmaps and sets; the v1 converter in both directions, including timestamptz round-trips; `TtlLruCache`; `RateLimiter` and `OsuGateway`, ported with their current tests plus `getBeatmapsSince`; `BeatmapService`, `BeatmapsetService`, and `BeatmapFileService` against fake repositories, store, and gateway (cache order, invalidation, completeness, busy re-checks, re-checks rewriting dates, lane-independent sharing, MD5 checks after download, database failures → `503`, failed writes still served); the since walker (cursor, boundary overlap, a full page with one timestamp, retry after a refusal).
+**Unit** (`tests/unit`, no I/O): config parsing; key hashing; the key snapshot (authenticate, built-in keys, revoked keys, reload keeping the previous snapshot on failure, overlapping reloads); the auth middleware (header, query, both differing, anonymous, `ANON_RATE_LIMIT=0`); the rate-limit middleware (per key, per IP, unlimited, the warning line); id/hash validation; re-check intervals for beatmaps and sets; the v1 converter in both directions, including timestamptz round-trips; `LruCache`; `RateLimiter` and `OsuGateway`, ported with their current tests plus `getBeatmapsSince`; `BeatmapService`, `BeatmapsetService`, and `BeatmapFileService` against fake repositories, store, and gateway (cache order, invalidation, completeness, busy re-checks, re-checks rewriting dates, lane-independent sharing, MD5 checks after download, database failures → `503`, failed writes still served); the since walker (cursor, boundary overlap, a full page with one timestamp, retry after a refusal).
 
-**Integration** (`tests/integration`, PGlite and temporary directories): repositories against the real migrations, including a row written as `timestamp` and migrated; the set transaction; `db:baseline` against a database created from the production schema dump; the rollback script restoring a schema the old build reads; the controllers through supertest for every status and body, including the plain-text unknown-route `404`, `/health`, and `401`/`429` for database keys, built-in keys, and anonymous callers; the `key` commands against PGlite; the populate and fix-dates commands against a stub osu! server and a fake dump directory with a valid, a missing, and a mismatched file.
+**Integration** (`tests/integration`, PGlite and temporary directories): repositories against the real migrations, including a row written as `timestamp` and migrated; the set transaction; `db:baseline` against a database created from the production schema dump; the rollback script restoring a schema the old build reads; the controllers through supertest for every status and body, including the HTML unknown-route `404`, `/health`, and `401`/`429` for database keys, built-in keys, and anonymous callers; the `key` commands against PGlite; the populate and fix-dates commands against a stub osu! server and a fake dump directory with a valid, a missing, and a mismatched file.
 
 **E2E** (`tests/e2e`): the built `dist/index.mjs` against PGlite over a socket and a stub osu! server, asserting the dpp `BeatmapServiceClient` contract (the `beatmap_id` and `file_md5` fields, a `404` with a `{ error: string }` body, a `503` with `Retry-After`) and graceful shutdown. Servers are stopped by their recorded PID.
 
@@ -336,4 +336,4 @@ The PostgreSQL variables join the zod schema (today they are read raw in `databa
 4. Set `TRUST_PROXY` to match the reverse proxy before exposing the service, and choose `ANON_RATE_LIMIT`. Create database keys for public clients with `key create`; existing callers keep their built-in keys.
 5. Check that `INTERNAL_SERVER_KEY` is set in production: if it was unset, every caller had the priority lane until now, and after this change they become anonymous (bulk lane, limited per IP) unless they get a key.
 
-Rolling back: the old build cannot read `timestamptz` columns (its Drizzle `timestamp()` columns append `+0000` to the value it reads, which yields invalid dates). `docs/rollback/0001_rewrite.down.sql` converts the four columns back with `USING <column> AT TIME ZONE 'UTC'` and recreates `beatmap_id_idx`; run it before starting the old build. The new tables can stay; the old build ignores them. The down script is covered by an integration test.
+Rolling back: the old build cannot read `timestamptz` columns (its Drizzle `timestamp()` columns append `+0000` to the value it reads, which yields invalid dates). `docs/rollback/0001_rewrite.down.sql` converts the four columns back with `USING <column> AT TIME ZONE 'UTC'`, recreates `beatmap_id_idx`, drops `beatmapset`, `cli_cursor`, and `api_keys`, and deletes `0001`'s row from Drizzle's migration table, so that starting the new build again re-applies `0001` cleanly. Database API keys are lost: note them with `key list` first and recreate them after migrating forward again. Run it before starting the old build. The down script is covered by an integration test.
