@@ -117,7 +117,7 @@ Every class that does I/O, or that another class depends on, is an `@Injectable(
 
 `RateLimiter` stays a concrete class constructed with the gateway (its tests exercise it directly); the gateway receives it through its constructor. The configuration, the database, and the limiter are runtime instances registered at startup, as in the processor's `registerDependencies`.
 
-Pure logic stays plain functions with direct unit tests: the v1 converter, id/hash validation, `resolveLane`, re-check intervals, MD5, and the since walker's paging rule.
+Pure logic stays plain functions with direct unit tests: the v1 converter, id/hash validation, key hashing, re-check intervals, MD5, and the since walker's paging rule.
 
 ### Access
 
