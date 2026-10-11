@@ -125,7 +125,7 @@ Modelled on the dpp broker (`apps/broker`: `registry/keys.ts`, `middleware/auth.
 
 **Keys.** `api_keys (id serial PK, name text UNIQUE, key_hash char(64) UNIQUE, lane text NOT NULL CHECK (lane IN ('priority','bulk')), rate_limit_per_minute integer NULL, created_at timestamptz, revoked_at timestamptz NULL)`. A key is 32 random bytes, base64url-encoded; only its SHA-256 hash is stored. `rate_limit_per_minute` null means unlimited.
 
-**Built-in keys.** `INTERNAL_SERVER_KEY` (priority lane) and `BULK_SERVER_KEY` (bulk lane), when set, keep working as two unlimited keys, so existing callers need no change. Once every caller has a database key they can be unset. A database key whose hash equals a built-in key's is rejected by `key create`.
+**Built-in keys.** `INTERNAL_SERVER_KEY` (priority lane) and `BULK_SERVER_KEY` (bulk lane), when set, keep working as two unlimited keys, so existing callers need no change. Once every caller has a database key they can be unset. `key create` generates random keys, so a collision with a built-in key is not a practical concern; if hashes ever matched, the built-in key wins.
 
 **Snapshot.** `KeyService` holds every unrevoked key in memory, reloaded every `KEY_RELOAD_INTERVAL_SECONDS` (default 30) and on `SIGHUP`. A failed reload logs and keeps the previous snapshot; overlapping reloads never let an older one replace a newer one (as in the broker's `RegistryService`). Authentication never touches the database, so a database outage does not lock callers out. If the first load fails, startup fails.
 
@@ -287,7 +287,7 @@ It never marks sets complete: the walk returns beatmaps, not whole sets. `--rest
 
 ### `fix-dates [--restart]`
 
-Walks with cursor `fix-dates`. For each beatmap in a page with status ranked, approved, or loved, it updates the four date columns and `approved` of an existing row; it never inserts. This corrects every row that is never re-checked, which is where the UTC+8 values are stuck; other rows heal at their next re-check (see **Single beatmaps**). It prints the number of rows updated and the number whose dates changed.
+Walks with cursor `fix-dates`. For each beatmap in a page with status ranked, approved, or loved that is stored, it compares `approved` and the three osu! dates with osu!'s values and, where they differ, overwrites them (and sets `last_checked`); it never inserts. This corrects every row that is never re-checked, which is where the UTC+8 values are stuck; other rows heal at their next re-check (see **Single beatmaps**). It prints the number of stored rows checked and the number corrected.
 
 ### `key create | update | revoke | list | show`
 
