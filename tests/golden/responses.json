@@ -1,0 +1,321 @@
+[
+    {
+        "name": "getbeatmap by id",
+        "status": 200,
+        "headers": {
+            "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+            "approved": "1",
+            "submit_date": "2007-10-06 17:46:31",
+            "approved_date": "2007-10-06 17:46:31",
+            "last_update": "2007-10-06 17:46:31",
+            "artist": "Kenji Ninuma",
+            "beatmap_id": "75",
+            "beatmapset_id": "1",
+            "bpm": "119.5",
+            "creator": "peppy",
+            "creator_id": "2",
+            "difficultyrating": "2.5",
+            "diff_aim": "1.25",
+            "diff_speed": "1.125",
+            "diff_size": "4",
+            "diff_overall": "6",
+            "diff_approach": "6",
+            "diff_drain": "6",
+            "hit_length": "108",
+            "source": "",
+            "genre_id": "2",
+            "language_id": "3",
+            "title": "DISCO PRINCE",
+            "total_length": "142",
+            "version": "Normal",
+            "file_md5": "4d3565fba0518ada1674829ca09d51b0",
+            "mode": "0",
+            "tags": "katamari",
+            "favourite_count": "100",
+            "rating": "8.5",
+            "playcount": "1000",
+            "passcount": "500",
+            "count_normal": "160",
+            "count_slider": "30",
+            "count_spinner": "4",
+            "max_combo": "314",
+            "storyboard": "0",
+            "video": "0",
+            "download_unavailable": "0",
+            "audio_unavailable": "0",
+            "packs": "S1 T44"
+        }
+    },
+    {
+        "name": "getbeatmap by hash",
+        "status": 200,
+        "headers": {
+            "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+            "approved": "1",
+            "submit_date": "2007-10-06 17:46:31",
+            "approved_date": "2007-10-06 17:46:31",
+            "last_update": "2007-10-06 17:46:31",
+            "artist": "Kenji Ninuma",
+            "beatmap_id": "75",
+            "beatmapset_id": "1",
+            "bpm": "119.5",
+            "creator": "peppy",
+            "creator_id": "2",
+            "difficultyrating": "2.5",
+            "diff_aim": "1.25",
+            "diff_speed": "1.125",
+            "diff_size": "4",
+            "diff_overall": "6",
+            "diff_approach": "6",
+            "diff_drain": "6",
+            "hit_length": "108",
+            "source": "",
+            "genre_id": "2",
+            "language_id": "3",
+            "title": "DISCO PRINCE",
+            "total_length": "142",
+            "version": "Normal",
+            "file_md5": "4d3565fba0518ada1674829ca09d51b0",
+            "mode": "0",
+            "tags": "katamari",
+            "favourite_count": "100",
+            "rating": "8.5",
+            "playcount": "1000",
+            "passcount": "500",
+            "count_normal": "160",
+            "count_slider": "30",
+            "count_spinner": "4",
+            "max_combo": "314",
+            "storyboard": "0",
+            "video": "0",
+            "download_unavailable": "0",
+            "audio_unavailable": "0",
+            "packs": "S1 T44"
+        }
+    },
+    {
+        "name": "getbeatmap not found",
+        "status": 404,
+        "headers": {
+            "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+            "error": "Beatmap not found"
+        }
+    },
+    {
+        "name": "getbeatmapfile by id",
+        "status": 200,
+        "headers": {
+            "content-type": "text/plain",
+            "content-disposition": "attachment; filename=75.osu"
+        },
+        "body": "osu file format v14\r\n\r\n[General]\r\nAudioFilename: audio.mp3\r\nMode: 0\r\n\r\n[Metadata]\r\nTitle:DISCO PRINCE\r\nArtist:Kenji Ninuma\r\nCreator:peppy\r\nVersion:Normal\r\nBeatmapID:75\r\nBeatmapSetID:1\r\n\r\n[Difficulty]\r\nHPDrainRate:6\r\nCircleSize:4\r\nOverallDifficulty:6\r\nApproachRate:6\r\nSliderMultiplier:1.4\r\nSliderTickRate:1\r\n\r\n[TimingPoints]\r\n0,500,4,2,0,100,1,0\r\n\r\n[HitObjects]\r\n256,192,1000,1,0,0:0:0:0:\r\n320,192,1500,1,0,0:0:0:0:\r\n"
+    },
+    {
+        "name": "getbeatmapfile by hash",
+        "status": 200,
+        "headers": {
+            "content-type": "text/plain",
+            "content-disposition": "attachment; filename=75.osu"
+        },
+        "body": "osu file format v14\r\n\r\n[General]\r\nAudioFilename: audio.mp3\r\nMode: 0\r\n\r\n[Metadata]\r\nTitle:DISCO PRINCE\r\nArtist:Kenji Ninuma\r\nCreator:peppy\r\nVersion:Normal\r\nBeatmapID:75\r\nBeatmapSetID:1\r\n\r\n[Difficulty]\r\nHPDrainRate:6\r\nCircleSize:4\r\nOverallDifficulty:6\r\nApproachRate:6\r\nSliderMultiplier:1.4\r\nSliderTickRate:1\r\n\r\n[TimingPoints]\r\n0,500,4,2,0,100,1,0\r\n\r\n[HitObjects]\r\n256,192,1000,1,0,0:0:0:0:\r\n320,192,1500,1,0,0:0:0:0:\r\n"
+    },
+    {
+        "name": "getbeatmapfile without a file",
+        "status": 404,
+        "headers": {
+            "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+            "error": "Beatmap file not found"
+        }
+    },
+    {
+        "name": "getbeatmapfile not found",
+        "status": 404,
+        "headers": {
+            "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+            "error": "Beatmap file not found"
+        }
+    },
+    {
+        "name": "getbeatmapfile of a taiko beatmap",
+        "status": 200,
+        "headers": {
+            "content-type": "text/plain",
+            "content-disposition": "attachment; filename=1001.osu"
+        },
+        "body": "osu file format v14\r\n\r\n[General]\r\nAudioFilename: audio.mp3\r\nMode: 0\r\n\r\n[Metadata]\r\nTitle:DISCO PRINCE\r\nArtist:Kenji Ninuma\r\nCreator:peppy\r\nVersion:Taiko\r\nBeatmapID:1001\r\nBeatmapSetID:1\r\n\r\n[Difficulty]\r\nHPDrainRate:6\r\nCircleSize:4\r\nOverallDifficulty:6\r\nApproachRate:6\r\nSliderMultiplier:1.4\r\nSliderTickRate:1\r\n\r\n[TimingPoints]\r\n0,500,4,2,0,100,1,0\r\n\r\n[HitObjects]\r\n256,192,1000,1,0,0:0:0:0:\r\n320,192,1500,1,0,0:0:0:0:\r\n"
+    },
+    {
+        "name": "getbeatmaps",
+        "status": 200,
+        "headers": {
+            "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+            {
+                "approved": "1",
+                "submit_date": "2007-10-06 17:46:31",
+                "approved_date": "2007-10-06 17:46:31",
+                "last_update": "2007-10-06 17:46:31",
+                "artist": "Kenji Ninuma",
+                "beatmap_id": "75",
+                "beatmapset_id": "1",
+                "bpm": "119.5",
+                "creator": "peppy",
+                "creator_id": "2",
+                "difficultyrating": "2.5",
+                "diff_aim": "1.25",
+                "diff_speed": "1.125",
+                "diff_size": "4",
+                "diff_overall": "6",
+                "diff_approach": "6",
+                "diff_drain": "6",
+                "hit_length": "108",
+                "source": "",
+                "genre_id": "2",
+                "language_id": "3",
+                "title": "DISCO PRINCE",
+                "total_length": "142",
+                "version": "Normal",
+                "file_md5": "4d3565fba0518ada1674829ca09d51b0",
+                "mode": "0",
+                "tags": "katamari",
+                "favourite_count": "100",
+                "rating": "8.5",
+                "playcount": "1000",
+                "passcount": "500",
+                "count_normal": "160",
+                "count_slider": "30",
+                "count_spinner": "4",
+                "max_combo": "314",
+                "storyboard": "0",
+                "video": "0",
+                "download_unavailable": "0",
+                "audio_unavailable": "0",
+                "packs": "S1 T44"
+            },
+            {
+                "approved": "1",
+                "submit_date": "2007-10-06 17:46:31",
+                "approved_date": "2007-10-06 17:46:31",
+                "last_update": "2007-10-06 17:46:31",
+                "artist": "Kenji Ninuma",
+                "beatmap_id": "76",
+                "beatmapset_id": "1",
+                "bpm": "119.5",
+                "creator": "peppy",
+                "creator_id": "2",
+                "difficultyrating": "2.5",
+                "diff_aim": "1.25",
+                "diff_speed": "1.125",
+                "diff_size": "4",
+                "diff_overall": "6",
+                "diff_approach": "6",
+                "diff_drain": "6",
+                "hit_length": "108",
+                "source": "",
+                "genre_id": "2",
+                "language_id": "3",
+                "title": "DISCO PRINCE",
+                "total_length": "142",
+                "version": "Hard",
+                "file_md5": "11111111111111111111111111111111",
+                "mode": "0",
+                "tags": "katamari",
+                "favourite_count": "100",
+                "rating": "8.5",
+                "playcount": "1000",
+                "passcount": "500",
+                "count_normal": "160",
+                "count_slider": "30",
+                "count_spinner": "4",
+                "max_combo": null,
+                "storyboard": "0",
+                "video": "0",
+                "download_unavailable": "0",
+                "audio_unavailable": "0",
+                "packs": "S1 T44"
+            }
+        ]
+    },
+    {
+        "name": "getbeatmaps not found",
+        "status": 404,
+        "headers": {
+            "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+            "error": "Beatmapset not found"
+        }
+    },
+    {
+        "name": "wrong key",
+        "status": 401,
+        "headers": {
+            "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+            "error": "Unauthorized"
+        }
+    },
+    {
+        "name": "getbeatmap without parameters",
+        "status": 400,
+        "headers": {
+            "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+            "error": "Missing id or hash query parameter"
+        }
+    },
+    {
+        "name": "getbeatmapfile without parameters",
+        "status": 400,
+        "headers": {
+            "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+            "error": "Missing id query parameter"
+        }
+    },
+    {
+        "name": "getbeatmaps without parameters",
+        "status": 400,
+        "headers": {
+            "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+            "error": "Missing id or hash query parameter"
+        }
+    },
+    {
+        "name": "no key",
+        "status": 401,
+        "headers": {
+            "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+            "error": "Unauthorized"
+        }
+    },
+    {
+        "name": "osu! rate limited",
+        "status": 503,
+        "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "retry-after": "30"
+        },
+        "body": {
+            "error": "osu! is temporarily unavailable; retry later"
+        }
+    }
+]
