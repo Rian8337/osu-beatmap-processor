@@ -1,0 +1,318 @@
+{
+  "id": "03f82938-e2a6-4c6d-b2f6-e7c72b1be756",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.beatmap": {
+      "name": "beatmap",
+      "schema": "",
+      "columns": {
+        "approved": {
+          "name": "approved",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "submit_date": {
+          "name": "submit_date",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "approved_date": {
+          "name": "approved_date",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_update": {
+          "name": "last_update",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "artist": {
+          "name": "artist",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "beatmap_id": {
+          "name": "beatmap_id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "beatmapset_id": {
+          "name": "beatmapset_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bpm": {
+          "name": "bpm",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creator": {
+          "name": "creator",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creator_id": {
+          "name": "creator_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "difficultyrating": {
+          "name": "difficultyrating",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "diff_aim": {
+          "name": "diff_aim",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "diff_speed": {
+          "name": "diff_speed",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "diff_size": {
+          "name": "diff_size",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "diff_overall": {
+          "name": "diff_overall",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "diff_approach": {
+          "name": "diff_approach",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "diff_drain": {
+          "name": "diff_drain",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hit_length": {
+          "name": "hit_length",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "genre_id": {
+          "name": "genre_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "language_id": {
+          "name": "language_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "total_length": {
+          "name": "total_length",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "file_md5": {
+          "name": "file_md5",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tags": {
+          "name": "tags",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "favourite_count": {
+          "name": "favourite_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rating": {
+          "name": "rating",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "playcount": {
+          "name": "playcount",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "passcount": {
+          "name": "passcount",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "count_normal": {
+          "name": "count_normal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "count_slider": {
+          "name": "count_slider",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "count_spinner": {
+          "name": "count_spinner",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_combo": {
+          "name": "max_combo",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "storyboard": {
+          "name": "storyboard",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "video": {
+          "name": "video",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "download_unavailable": {
+          "name": "download_unavailable",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "audio_unavailable": {
+          "name": "audio_unavailable",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "packs": {
+          "name": "packs",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_checked": {
+          "name": "last_checked",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "beatmap_id_idx": {
+          "name": "beatmap_id_idx",
+          "columns": [
+            {
+              "expression": "beatmap_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "beatmapset_id_idx": {
+          "name": "beatmapset_id_idx",
+          "columns": [
+            {
+              "expression": "beatmapset_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "beatmap_md5_idx": {
+          "name": "beatmap_md5_idx",
+          "columns": [
+            {
+              "expression": "file_md5",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
