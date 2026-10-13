@@ -14,7 +14,10 @@ import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+// Each test starts one or two PGlite instances, which is slow under load.
+vi.setConfig({ testTimeout: 30_000 });
 
 const fixture = (path: string) =>
     readFile(fileURLToPath(new URL(`../../${path}`, import.meta.url)), "utf8");
@@ -28,6 +31,7 @@ INSERT INTO beatmap VALUES (
 
 interface Opened {
     readonly client: PGlite;
+    // Typed as PgliteDatabase because the pglite migrator does not accept the generic Database.
     readonly db: PgliteDatabase<typeof schema>;
 }
 
@@ -107,6 +111,8 @@ describe("migrations", () => {
     it("migrates a baselined production database without moving stored instants", async () => {
         const { client, db } = open();
 
+        // A non-UTC session, so that a conversion without `AT TIME ZONE 'UTC'` would move the instants.
+        await client.exec("set timezone = 'America/New_York'");
         await client.exec(await fixture("fixtures/production-schema.sql"));
         await client.exec(insertOldRow);
         await baselineDatabase(db, migrationsFolder);
