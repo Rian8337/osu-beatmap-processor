@@ -3,7 +3,9 @@ import { BadRequestError } from "@/server";
 /**
  * How a request names a beatmap.
  */
-export type BeatmapReference = { readonly id: number } | { readonly hash: string };
+export type BeatmapReference =
+    | { readonly id: number }
+    | { readonly hash: string };
 
 const maxId = 2_147_483_647;
 

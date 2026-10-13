@@ -83,7 +83,9 @@ export function convertRowToApiResponse(row: BeatmapRow): OsuAPIResponse {
     return {
         approved: row.approved.toString(),
         submit_date: formatOsuDate(row.submitDate),
-        approved_date: row.approvedDate ? formatOsuDate(row.approvedDate) : null,
+        approved_date: row.approvedDate
+            ? formatOsuDate(row.approvedDate)
+            : null,
         last_update: formatOsuDate(row.lastUpdate),
         artist: row.artist,
         beatmap_id: row.beatmapId.toString(),

@@ -91,9 +91,14 @@ describe("converter", () => {
     });
 
     it("answers the v1 format the pre-rewrite service answered", () => {
-        const response = buildApiBeatmap({ storyboard: "1", audio_unavailable: "1" });
+        const response = buildApiBeatmap({
+            storyboard: "1",
+            audio_unavailable: "1",
+        });
 
-        expect(convertRowToApiResponse(convertApiResponseToRow(response))).toEqual({
+        expect(
+            convertRowToApiResponse(convertApiResponseToRow(response)),
+        ).toEqual({
             ...response,
             packs: "S1 T44",
         });

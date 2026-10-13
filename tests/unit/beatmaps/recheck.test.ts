@@ -22,7 +22,9 @@ describe("getRecheckIntervalMs", () => {
     });
 
     it("treats an unknown status as pending", () => {
-        expect(getRecheckIntervalMs(9 as RankedStatus, minutes)).toBe(60 * 60_000);
+        expect(getRecheckIntervalMs(9 as RankedStatus, minutes)).toBe(
+            60 * 60_000,
+        );
     });
 });
 
@@ -30,7 +32,11 @@ describe("getBeatmapsetRecheckIntervalMs", () => {
     it("uses the most volatile status", () => {
         expect(
             getBeatmapsetRecheckIntervalMs(
-                [RankedStatus.Ranked, RankedStatus.Qualified, RankedStatus.Graveyard],
+                [
+                    RankedStatus.Ranked,
+                    RankedStatus.Qualified,
+                    RankedStatus.Graveyard,
+                ],
                 minutes,
             ),
         ).toBe(15 * 60_000);
@@ -38,7 +44,10 @@ describe("getBeatmapsetRecheckIntervalMs", () => {
 
     it("never re-checks an all-ranked set", () => {
         expect(
-            getBeatmapsetRecheckIntervalMs([RankedStatus.Ranked, RankedStatus.Loved], minutes),
+            getBeatmapsetRecheckIntervalMs(
+                [RankedStatus.Ranked, RankedStatus.Loved],
+                minutes,
+            ),
         ).toBeNull();
     });
 

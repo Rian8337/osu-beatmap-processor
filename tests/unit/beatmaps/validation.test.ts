@@ -41,9 +41,11 @@ describe("parseBeatmapReference", () => {
 
     it("treats empty values as missing", () => {
         expect(parseBeatmapReference({ id: "", hash })).toEqual({ hash });
-        expect(captureFailureMessage(() => parseBeatmapReference({ id: "", hash: "" }))).toBe(
-            "Missing id or hash",
-        );
+        expect(
+            captureFailureMessage(() =>
+                parseBeatmapReference({ id: "", hash: "" }),
+            ),
+        ).toBe("Missing id or hash");
         expect(captureFailureMessage(() => parseBeatmapReference({}))).toBe(
             "Missing id or hash",
         );
@@ -61,7 +63,9 @@ describe("parseBeatmapReference", () => {
         [["1", "2"]],
         [{ a: "1" }],
     ])("rejects the id %j", (id) => {
-        expect(captureFailureMessage(() => parseBeatmapReference({ id }))).toBe("Invalid id");
+        expect(captureFailureMessage(() => parseBeatmapReference({ id }))).toBe(
+            "Invalid id",
+        );
     });
 
     it.each([
@@ -70,9 +74,9 @@ describe("parseBeatmapReference", () => {
         ["0123456789abcdef0123456789abcdeg"],
         [[hash, hash]],
     ])("rejects the hash %j", (value) => {
-        expect(captureFailureMessage(() => parseBeatmapReference({ hash: value }))).toBe(
-            "Invalid hash",
-        );
+        expect(
+            captureFailureMessage(() => parseBeatmapReference({ hash: value })),
+        ).toBe("Invalid hash");
     });
 });
 
@@ -82,12 +86,20 @@ describe("parseBeatmapsetId", () => {
     });
 
     it("needs an id", () => {
-        expect(captureFailureMessage(() => parseBeatmapsetId({}))).toBe("Missing id");
-        expect(captureFailureMessage(() => parseBeatmapsetId({ id: "" }))).toBe("Missing id");
-        expect(captureFailureMessage(() => parseBeatmapsetId({ hash }))).toBe("Missing id");
+        expect(captureFailureMessage(() => parseBeatmapsetId({}))).toBe(
+            "Missing id",
+        );
+        expect(captureFailureMessage(() => parseBeatmapsetId({ id: "" }))).toBe(
+            "Missing id",
+        );
+        expect(captureFailureMessage(() => parseBeatmapsetId({ hash }))).toBe(
+            "Missing id",
+        );
     });
 
     it("rejects an invalid id", () => {
-        expect(captureFailureMessage(() => parseBeatmapsetId({ id: "x" }))).toBe("Invalid id");
+        expect(
+            captureFailureMessage(() => parseBeatmapsetId({ id: "x" })),
+        ).toBe("Invalid id");
     });
 });
