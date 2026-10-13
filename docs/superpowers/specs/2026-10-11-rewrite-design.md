@@ -195,7 +195,7 @@ All routes live under `/api/beatmap`, authenticate as described under **Access**
 | by hash     | MD5            | beatmap row            | 10,000                        |
 | sets        | beatmapset id  | the set's beatmap rows | 2,000                         |
 
-### Single beatmaps (`BeatmapService.get(lane, id | hash)`)
+### Single beatmaps (`BeatmapService.getBeatmap(lane, id | hash)`)
 
 The current logic, ported:
 
@@ -205,7 +205,7 @@ The current logic, ported:
 
 Concurrent calls for the same beatmap share one in-flight lookup, keyed by beatmap, regardless of lane (**new**; today only the gateway's per-lane request sharing exists). When a priority call joins a lookup started by the bulk lane, it gets the bulk lookup's result or error.
 
-### Beatmapsets (`BeatmapsetService.get(lane, setId)`)
+### Beatmapsets (`BeatmapsetService.getBeatmapset(lane, setId)`)
 
 **New: sets are stored in Postgres.** Rows alone cannot tell whether a set is complete (a single `/getbeatmap` call stores one difficulty), so a new table records completeness:
 
@@ -224,7 +224,7 @@ Re-check interval: that of the set's most volatile status (a set containing a qu
 
 When `BeatmapService` invalidates a beatmap or finds it gone, it deletes the `beatmapset` row of its set, so the next set request goes back to osu! instead of serving a stale set.
 
-### Files (`BeatmapFileService.get(lane, beatmap)`)
+### Files (`BeatmapFileService.getBeatmapFile(lane, beatmap)`)
 
 The caller passes the resolved beatmap row, so `file_md5` is always known.
 
