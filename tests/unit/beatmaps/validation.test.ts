@@ -9,9 +9,11 @@ function captureFailureMessage(run: () => unknown): string {
     try {
         run();
     } catch (e) {
-        expect(e).toBeInstanceOf(BadRequestError);
+        if (e instanceof BadRequestError) {
+            return e.message;
+        }
 
-        return (e as BadRequestError).message;
+        throw e;
     }
 
     throw new Error("expected a BadRequestError");
