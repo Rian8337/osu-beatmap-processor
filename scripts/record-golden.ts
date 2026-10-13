@@ -49,7 +49,10 @@ async function main(): Promise<void> {
     const database = new PGlite();
 
     await database.exec(
-        await readFile(join(root, "tests/fixtures/production-schema.sql"), "utf8"),
+        await readFile(
+            join(root, "tests/fixtures/production-schema.sql"),
+            "utf8",
+        ),
     );
 
     const postgresPort = await findFreePort();
@@ -93,7 +96,12 @@ async function main(): Promise<void> {
         const base = `http://127.0.0.1:${port.toString()}`;
         const deadline = Date.now() + 20_000;
 
-        while (!(await fetch(`${base}/api/beatmap/getbeatmap`).then(() => true, () => false))) {
+        while (
+            !(await fetch(`${base}/api/beatmap/getbeatmap`).then(
+                () => true,
+                () => false,
+            ))
+        ) {
             if (Date.now() > deadline || child.exitCode !== null) {
                 throw new Error("The old service did not start");
             }
@@ -124,7 +132,12 @@ async function main(): Promise<void> {
                 ? JSON.parse(text)
                 : text;
 
-            responses.push({ name: golden.name, status: response.status, headers, body });
+            responses.push({
+                name: golden.name,
+                status: response.status,
+                headers,
+                body,
+            });
             console.log(`${response.status.toString()} ${golden.name}`);
         }
 

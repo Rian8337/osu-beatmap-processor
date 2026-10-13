@@ -29,24 +29,50 @@ const hash75 = computeFixtureMD5(buildOsuFile(75, "Normal"));
  * Run in this order: earlier requests fill the caches later ones rely on, and the rate-limited case comes last.
  */
 export const goldenCases: readonly GoldenCase[] = [
-    { name: "getbeatmap by id", path: `/api/beatmap/getbeatmap?id=75&key=${priorityKey}` },
-    { name: "getbeatmap by hash", path: `/api/beatmap/getbeatmap?hash=${hash75}&key=${bulkKey}` },
-    { name: "getbeatmap not found", path: `/api/beatmap/getbeatmap?id=999&key=${priorityKey}` },
-    { name: "getbeatmapfile by id", path: `/api/beatmap/getbeatmapfile?id=75&key=${priorityKey}` },
-    { name: "getbeatmapfile by hash", path: `/api/beatmap/getbeatmapfile?hash=${hash75}&key=${priorityKey}` },
-    { name: "getbeatmapfile without a file", path: `/api/beatmap/getbeatmapfile?id=76&key=${priorityKey}` },
+    {
+        name: "getbeatmap by id",
+        path: `/api/beatmap/getbeatmap?id=75&key=${priorityKey}`,
+    },
+    {
+        name: "getbeatmap by hash",
+        path: `/api/beatmap/getbeatmap?hash=${hash75}&key=${bulkKey}`,
+    },
+    {
+        name: "getbeatmap not found",
+        path: `/api/beatmap/getbeatmap?id=999&key=${priorityKey}`,
+    },
+    {
+        name: "getbeatmapfile by id",
+        path: `/api/beatmap/getbeatmapfile?id=75&key=${priorityKey}`,
+    },
+    {
+        name: "getbeatmapfile by hash",
+        path: `/api/beatmap/getbeatmapfile?hash=${hash75}&key=${priorityKey}`,
+    },
+    {
+        name: "getbeatmapfile without a file",
+        path: `/api/beatmap/getbeatmapfile?id=76&key=${priorityKey}`,
+    },
     {
         name: "getbeatmapfile not found",
         path: `/api/beatmap/getbeatmapfile?id=999&key=${priorityKey}`,
-        changeReason: "metadata is resolved first, so an unknown beatmap is 404 Beatmap not found",
+        changeReason:
+            "metadata is resolved first, so an unknown beatmap is 404 Beatmap not found",
     },
     {
         name: "getbeatmapfile of a taiko beatmap",
         path: `/api/beatmap/getbeatmapfile?id=1001&key=${priorityKey}`,
-        changeReason: "metadata is resolved first, so a non-standard beatmap is 404 Beatmap not found",
+        changeReason:
+            "metadata is resolved first, so a non-standard beatmap is 404 Beatmap not found",
     },
-    { name: "getbeatmaps", path: `/api/beatmap/getbeatmaps?id=1&key=${priorityKey}` },
-    { name: "getbeatmaps not found", path: `/api/beatmap/getbeatmaps?id=999&key=${priorityKey}` },
+    {
+        name: "getbeatmaps",
+        path: `/api/beatmap/getbeatmaps?id=1&key=${priorityKey}`,
+    },
+    {
+        name: "getbeatmaps not found",
+        path: `/api/beatmap/getbeatmaps?id=999&key=${priorityKey}`,
+    },
     { name: "wrong key", path: "/api/beatmap/getbeatmap?id=75&key=wrong" },
     {
         name: "getbeatmap without parameters",
@@ -66,7 +92,8 @@ export const goldenCases: readonly GoldenCase[] = [
     {
         name: "no key",
         path: "/api/beatmap/getbeatmap?id=75",
-        changeReason: "requests without a key are anonymous (bulk lane, limited per IP)",
+        changeReason:
+            "requests without a key are anonymous (bulk lane, limited per IP)",
     },
     {
         name: "osu! rate limited",
