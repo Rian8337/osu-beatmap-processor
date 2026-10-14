@@ -73,9 +73,7 @@ export class BeatmapService implements IBeatmapService {
         if (!fetched) {
             const known =
                 this.beatmapsById.get(beatmapId) ??
-                (await this.beatmapRepository
-                    .findById(beatmapId)
-                    .catch(() => null));
+                (await this.findStoredBeatmap(beatmapId));
 
             if (known) {
                 await this.removeBeatmap(known);
@@ -121,10 +119,12 @@ export class BeatmapService implements IBeatmapService {
         reference: BeatmapReference,
     ): Promise<BeatmapRow | null> {
         // A failed database read throws DatabaseUnavailableError here, before osu! is asked.
-        const cached =
-            ("id" in reference
+        const remembered =
+            "id" in reference
                 ? this.beatmapsById.get(reference.id)
-                : this.beatmapsByHash.get(reference.hash)) ??
+                : this.beatmapsByHash.get(reference.hash);
+        const cached =
+            remembered ??
             ("id" in reference
                 ? await this.beatmapRepository.findById(reference.id)
                 : await this.beatmapRepository.findByHash(reference.hash));
@@ -140,7 +140,16 @@ export class BeatmapService implements IBeatmapService {
             ? await this.recheck(lane, cached)
             : cached;
 
-        return current ? (this.cacheBeatmaps([current])[0] ?? null) : null;
+        if (!current) {
+            return null;
+        }
+
+        // A memory hit that was not re-checked keeps its original expiry.
+        if (current === remembered) {
+            return current;
+        }
+
+        return this.cacheBeatmaps([current])[0] ?? null;
     }
 
     private async fetch(
@@ -156,16 +165,7 @@ export class BeatmapService implements IBeatmapService {
         const row = convertApiResponseToRow(response);
         const previous =
             this.beatmapsById.get(row.beatmapId) ??
-            (await this.beatmapRepository
-                .findById(row.beatmapId)
-                .catch((e: unknown) => {
-                    console.error(
-                        `Failed to read the stored beatmap ${row.beatmapId.toString()}:`,
-                        getErrorMessage(e),
-                    );
-
-                    return null;
-                }));
+            (await this.findStoredBeatmap(row.beatmapId));
 
         if (previous && previous.fileMd5 !== row.fileMd5) {
             await this.invalidateBeatmap(previous);
@@ -176,6 +176,24 @@ export class BeatmapService implements IBeatmapService {
         );
 
         return this.cacheBeatmaps([row])[0] ?? null;
+    }
+
+    /**
+     * The stored beatmap, or `null` if there is none or the database cannot be read (the failure is logged).
+     */
+    private async findStoredBeatmap(
+        beatmapId: number,
+    ): Promise<BeatmapRow | null> {
+        try {
+            return await this.beatmapRepository.findById(beatmapId);
+        } catch (e) {
+            console.error(
+                `Failed to read the stored beatmap ${beatmapId.toString()}:`,
+                getErrorMessage(e),
+            );
+
+            return null;
+        }
     }
 
     /**

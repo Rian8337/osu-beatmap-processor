@@ -9,7 +9,8 @@ import { FakeOsuGateway } from "@test/fakes/FakeOsuGateway";
 import { silenceConsoleErrors } from "@test/utils/silenceConsoleErrors";
 import { buildBeatmapRow } from "@test/utils/rows";
 import { RankedStatus } from "@rian8337/osu-base";
-import { describe, expect, it } from "vitest";
+import { OsuUnavailableError } from "@/osu/errors";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const hashA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const hashB = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -40,6 +41,10 @@ function setup(...stored: ReturnType<typeof buildBeatmapRow>[]) {
 }
 
 describe("BeatmapService", () => {
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
     it("asks osu! for an unknown beatmap, stores it, then serves it from memory", async () => {
         const { osuGateway, beatmapRepository, service } = setup();
 
@@ -299,5 +304,61 @@ describe("BeatmapService", () => {
         expect(
             (await service.getBeatmap("priority", { id: 75 }))?.maxCombo,
         ).toBe(2);
+    });
+
+    it("rejects with OsuUnavailableError for an uncached beatmap when osu! is unavailable", async () => {
+        const { osuGateway, service } = setup();
+
+        osuGateway.unavailableForSeconds = 5;
+
+        await expect(
+            service.getBeatmap("priority", { id: 75 }),
+        ).rejects.toBeInstanceOf(OsuUnavailableError);
+    });
+
+    it("rejects refreshBeatmap with OsuUnavailableError when osu! is unavailable", async () => {
+        const { osuGateway, service } = setup(buildBeatmapRow());
+
+        osuGateway.unavailableForSeconds = 5;
+
+        await expect(service.refreshBeatmap("bulk", 75)).rejects.toBeInstanceOf(
+            OsuUnavailableError,
+        );
+    });
+
+    it("logs a failed database read while refreshing a beatmap osu! no longer has", async () => {
+        const log = silenceConsoleErrors();
+        const { beatmapRepository, service } = setup();
+
+        beatmapRepository.shouldFailReads = true;
+
+        expect(await service.refreshBeatmap("bulk", 75)).toBeNull();
+        expect(log).toHaveBeenCalledWith(
+            "Failed to read the stored beatmap 75:",
+            expect.any(String),
+        );
+    });
+
+    it("expires a memory entry 15 minutes after it was set, however often it is read", async () => {
+        vi.useFakeTimers();
+
+        const { osuGateway, beatmapRepository, service } = setup();
+
+        osuGateway.addBeatmaps(buildApiBeatmap({ approved: "1" }));
+        await service.getBeatmap("priority", { id: 75 });
+
+        const readsAfterFirst = beatmapRepository.readCount;
+
+        for (let minute = 0; minute < 14; minute++) {
+            vi.advanceTimersByTime(60_000);
+            await service.getBeatmap("priority", { id: 75 });
+        }
+
+        expect(beatmapRepository.readCount).toBe(readsAfterFirst);
+
+        vi.advanceTimersByTime(2 * 60_000);
+        await service.getBeatmap("priority", { id: 75 });
+
+        expect(beatmapRepository.readCount).toBeGreaterThan(readsAfterFirst);
     });
 });

@@ -13,26 +13,30 @@ export class FakeBeatmapRepository implements IBeatmapRepository {
 
     constructor(...initial: BeatmapRow[]) {
         for (const row of initial) {
-            this.rows.set(row.beatmapId, row);
+            this.rows.set(row.beatmapId, structuredClone(row));
         }
     }
 
     async findById(id: number): Promise<BeatmapRow | null> {
         this.simulateRead();
 
-        return this.rows.get(id) ?? null;
+        return this.copy(this.rows.get(id)) ?? null;
     }
 
     async findByHash(hash: string): Promise<BeatmapRow | null> {
         this.simulateRead();
 
-        return [...this.rows.values()].find((r) => r.fileMd5 === hash) ?? null;
+        return (
+            this.copy(
+                [...this.rows.values()].find((r) => r.fileMd5 === hash),
+            ) ?? null
+        );
     }
 
     async findByIds(ids: readonly number[]): Promise<BeatmapRow[]> {
         this.simulateRead();
 
-        return ids.flatMap((id) => this.rows.get(id) ?? []);
+        return ids.flatMap((id) => this.copy(this.rows.get(id)) ?? []);
     }
 
     async findByBeatmapsetId(beatmapsetId: number): Promise<BeatmapRow[]> {
@@ -40,14 +44,15 @@ export class FakeBeatmapRepository implements IBeatmapRepository {
 
         return [...this.rows.values()]
             .filter((r) => r.beatmapsetId === beatmapsetId)
-            .sort((a, b) => a.beatmapId - b.beatmapId);
+            .sort((a, b) => a.beatmapId - b.beatmapId)
+            .map((r) => structuredClone(r));
     }
 
     async upsert(rows: readonly BeatmapRow[]): Promise<void> {
         this.simulateWrite();
 
         for (const row of rows) {
-            this.rows.set(row.beatmapId, { ...row });
+            this.rows.set(row.beatmapId, structuredClone(row));
         }
     }
 
@@ -71,6 +76,10 @@ export class FakeBeatmapRepository implements IBeatmapRepository {
     async delete(id: number): Promise<void> {
         this.simulateWrite();
         this.rows.delete(id);
+    }
+
+    private copy(row: BeatmapRow | undefined): BeatmapRow | undefined {
+        return row && structuredClone(row);
     }
 
     /** Counts a database read, and fails it as the real repository would when `shouldFailReads` is set. */
