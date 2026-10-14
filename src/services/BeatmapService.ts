@@ -1,4 +1,5 @@
 import { convertApiResponseToRow } from "@/beatmaps/converter";
+import { keepStoredMaxCombo } from "@/beatmaps/maxCombo";
 import { isRecheckDue, getRecheckIntervalMs } from "@/beatmaps/recheck";
 import type { BeatmapReference } from "@/beatmaps/validation";
 import { LruCache } from "@/cache/LruCache";
@@ -243,10 +244,7 @@ export class BeatmapService implements IBeatmapService {
 
         // Every column comes from osu!'s answer (this is how rows with UTC+8 dates heal), except a max combo that
         // osu! does not know and the file provided.
-        const updated = {
-            ...fresh,
-            maxCombo: fresh.maxCombo ?? cached.maxCombo,
-        };
+        const updated = keepStoredMaxCombo(fresh, cached);
 
         await this.write(`update beatmap ${fresh.beatmapId.toString()}`, () =>
             this.beatmapRepository.upsert([updated]),

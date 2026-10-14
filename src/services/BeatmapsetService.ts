@@ -1,4 +1,5 @@
 import { convertApiResponseToRow } from "@/beatmaps/converter";
+import { keepStoredMaxCombo } from "@/beatmaps/maxCombo";
 import {
     isRecheckDue,
     getBeatmapsetRecheckIntervalMs,
@@ -174,14 +175,14 @@ export class BeatmapsetService implements IBeatmapsetService {
         }
 
         const checkedAt = new Date();
-        const rows = responses
+        const fresh = responses
             .filter((response) => response.mode === "0")
             .map((response) => convertApiResponseToRow(response, checkedAt))
             .sort(byBeatmapId);
 
-        const stale = await this.commitBeatmapset(
+        const { rows, stale } = await this.commitBeatmapset(
             beatmapsetId,
-            rows,
+            fresh,
             checkedAt,
             previous,
         );
@@ -204,20 +205,34 @@ export class BeatmapsetService implements IBeatmapsetService {
     }
 
     /**
-     * Replaces the stored set.
+     * Replaces the stored set. A max combo osu! does not know is kept from the stored row of the same file.
      *
-     * @returns The previously stored rows that are stale, or none if storing failed (the failure is logged).
+     * @returns The rows as stored, and the previously stored rows that are stale (none if storing failed: the failure
+     * is logged, and the rows are then the unstored ones).
      */
     private async commitBeatmapset(
         beatmapsetId: number,
-        rows: readonly BeatmapRow[],
+        fresh: readonly BeatmapRow[],
         checkedAt: Date,
         previous: readonly BeatmapRow[] | null,
-    ): Promise<readonly BeatmapRow[]> {
+    ): Promise<{
+        rows: readonly BeatmapRow[];
+        stale: readonly BeatmapRow[];
+    }> {
+        let rows = fresh;
+
         try {
             const before =
                 previous ??
                 (await this.beatmapRepository.findByBeatmapsetId(beatmapsetId));
+            const beforeById = new Map(
+                before.map((row) => [row.beatmapId, row]),
+            );
+
+            rows = fresh.map((row) =>
+                keepStoredMaxCombo(row, beforeById.get(row.beatmapId)),
+            );
+
             const removed = new Set(
                 await this.beatmapsetRepository.replaceBeatmapset(
                     beatmapsetId,
@@ -225,23 +240,26 @@ export class BeatmapsetService implements IBeatmapsetService {
                     checkedAt,
                 ),
             );
-            const fresh = new Map(
+            const freshHashes = new Map(
                 rows.map((row) => [row.beatmapId, row.fileMd5]),
             );
 
-            return before.filter(
-                (row) =>
-                    removed.has(row.beatmapId) ||
-                    (fresh.has(row.beatmapId) &&
-                        fresh.get(row.beatmapId) !== row.fileMd5),
-            );
+            return {
+                rows,
+                stale: before.filter(
+                    (row) =>
+                        removed.has(row.beatmapId) ||
+                        (freshHashes.has(row.beatmapId) &&
+                            freshHashes.get(row.beatmapId) !== row.fileMd5),
+                ),
+            };
         } catch (e) {
             console.error(
                 `Failed to store beatmapset ${beatmapsetId.toString()}:`,
                 getErrorMessage(e),
             );
 
-            return [];
+            return { rows, stale: [] };
         }
     }
 

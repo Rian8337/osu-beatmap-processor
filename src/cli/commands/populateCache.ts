@@ -1,4 +1,5 @@
 import { convertApiResponseToRow } from "@/beatmaps/converter";
+import { keepStoredMaxCombo } from "@/beatmaps/maxCombo";
 import { computeMD5 } from "@/beatmaps/md5";
 import { expectPositionals, parseArguments } from "@/cli/arguments";
 import { CliError } from "@/cli/errors";
@@ -42,21 +43,6 @@ async function isDirectory(path: string): Promise<boolean> {
  * be read).
  */
 type FileOutcome = "copied" | "missing" | "mismatched" | "failed";
-
-/**
- * Keeps the stored max combo when osu! sends none for the same file, as the beatmap service does: the stored one was
- * backfilled from the file. A different file (hash) drops it.
- */
-function keepStoredMaxCombo(
-    row: BeatmapRow,
-    stored: BeatmapRow | undefined,
-): BeatmapRow {
-    if (row.maxCombo !== null || !stored || stored.fileMd5 !== row.fileMd5) {
-        return row;
-    }
-
-    return { ...row, maxCombo: stored.maxCombo };
-}
 
 /**
  * Copies (or moves) a beatmap's file from an extracted osu! file dump when its MD5 matches.

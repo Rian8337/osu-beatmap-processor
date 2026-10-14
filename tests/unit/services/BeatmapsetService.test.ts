@@ -199,6 +199,78 @@ describe("BeatmapsetService", () => {
         expect(beatmapFileStore.files.has(75)).toBe(false);
     });
 
+    it("keeps a max combo backfilled from the file when osu! sends none for the same file", async () => {
+        const beatmapRepository = new FakeBeatmapRepository(
+            buildBeatmapRow({ approved: "-2", max_combo: "314" }, twoDaysAgo()),
+            buildBeatmapRow(
+                { beatmap_id: "76", approved: "-2", max_combo: "99" },
+                twoDaysAgo(),
+            ),
+        );
+        const { osuGateway, beatmapsetRepository, service } =
+            setup(beatmapRepository);
+
+        // The stored set is due for a re-check.
+        beatmapsetRepository.lastCheckedById.set(1, twoDaysAgo());
+        osuGateway.addBeatmaps(
+            buildApiBeatmap({ approved: "-2", max_combo: null }),
+            buildApiBeatmap({
+                beatmap_id: "76",
+                approved: "-2",
+                max_combo: "100",
+            }),
+        );
+
+        const rechecked = await service.getBeatmapset("priority", 1);
+
+        // Kept when osu! has none, replaced when osu! has one.
+        expect(rechecked?.map((row) => row.maxCombo)).toEqual([314, 100]);
+        expect(beatmapRepository.rows.get(75)?.maxCombo).toBe(314);
+        expect(beatmapRepository.rows.get(76)?.maxCombo).toBe(100);
+    });
+
+    it("keeps a stored max combo when a set stored incomplete is fetched again", async () => {
+        const beatmapRepository = new FakeBeatmapRepository(
+            buildBeatmapRow({ approved: "-2", max_combo: "314" }),
+        );
+        const { osuGateway, service } = setup(beatmapRepository);
+
+        // No completeness mark: the stored rows are read only to keep what osu! lacks.
+        osuGateway.addBeatmaps(
+            buildApiBeatmap({ approved: "-2", max_combo: null }),
+        );
+
+        const fetched = await service.getBeatmapset("priority", 1);
+
+        expect(fetched?.[0]?.maxCombo).toBe(314);
+        expect(beatmapRepository.rows.get(75)?.maxCombo).toBe(314);
+    });
+
+    it("drops a stored max combo when the file changed", async () => {
+        const beatmapRepository = new FakeBeatmapRepository(
+            buildBeatmapRow(
+                { approved: "-2", file_md5: "a".repeat(32), max_combo: "314" },
+                twoDaysAgo(),
+            ),
+        );
+        const { osuGateway, beatmapsetRepository, service } =
+            setup(beatmapRepository);
+
+        beatmapsetRepository.lastCheckedById.set(1, twoDaysAgo());
+        osuGateway.addBeatmaps(
+            buildApiBeatmap({
+                approved: "-2",
+                file_md5: "b".repeat(32),
+                max_combo: null,
+            }),
+        );
+
+        const rechecked = await service.getBeatmapset("priority", 1);
+
+        expect(rechecked?.[0]?.maxCombo).toBeNull();
+        expect(beatmapRepository.rows.get(75)?.maxCombo).toBeNull();
+    });
+
     it("serves the stored set when the re-check is skipped or fails", async () => {
         const beatmapRepository = new FakeBeatmapRepository(
             buildBeatmapRow({ approved: "-2" }, twoDaysAgo()),
