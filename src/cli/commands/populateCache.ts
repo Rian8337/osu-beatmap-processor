@@ -11,8 +11,8 @@ import { BeatmapRepository } from "@/repositories/BeatmapRepository";
 import { CursorRepository } from "@/repositories/CursorRepository";
 import { getErrorMessage } from "@/utils/getErrorMessage";
 import { RankedStatus } from "@rian8337/osu-base";
-import { readFile, rm, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile, realpath, rm, stat } from "node:fs/promises";
+import { join, resolve } from "node:path";
 
 function hasErrorCode(error: unknown, ...codes: string[]): boolean {
     return (
@@ -31,6 +31,21 @@ async function isDirectory(path: string): Promise<boolean> {
         // Missing, or below a file.
         if (hasErrorCode(e, "ENOENT", "ENOTDIR")) {
             return false;
+        }
+
+        throw e;
+    }
+}
+
+/**
+ * The real location of a directory, or its resolved path while it does not exist yet.
+ */
+async function locateDirectory(path: string): Promise<string> {
+    try {
+        return await realpath(path);
+    } catch (e) {
+        if (hasErrorCode(e, "ENOENT", "ENOTDIR")) {
+            return resolve(path);
         }
 
         throw e;
@@ -120,6 +135,19 @@ export const populateCache: Command = (args) => {
         }
 
         const config = deps.loadConfig();
+
+        // Moving files out of the directory they are copied into would delete the cache that is being filled.
+        if (
+            move &&
+            dump !== undefined &&
+            (await locateDirectory(dump)) ===
+                (await locateDirectory(config.beatmapFileDirectory))
+        ) {
+            throw new CliError(
+                "--move cannot be used when --files is BEATMAP_FILE_DIRECTORY: it would delete the cache it fills",
+            );
+        }
+
         const beatmaps = new BeatmapRepository(deps.db);
         const store = new BeatmapFileStore(config);
         const totals = {

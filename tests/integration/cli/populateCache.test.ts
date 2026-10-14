@@ -20,7 +20,7 @@ import {
     writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 30_000 });
@@ -380,6 +380,42 @@ describe("populate-cache", () => {
         expect(await runCli(argv, deps)).toBe(1);
         expect(deps.output.errors).toContain(message);
     });
+
+    it.each([
+        ["the same path", () => dump],
+        ["a path that resolves to it", () => join(dump, "..", basename(dump))],
+    ])(
+        "rejects --move when --files is BEATMAP_FILE_DIRECTORY (%s)",
+        async (_, locate) => {
+            await using database = await createTestDatabase();
+            const deps = createCliDependencies(database.db, {
+                loadConfig: () => ({
+                    ...testConfig,
+                    beatmapFileDirectory: dump,
+                }),
+                createOsuGateway: () => osuGateway(),
+            });
+
+            expect(
+                await runCli(
+                    ["populate-cache", "--files", locate(), "--move"],
+                    deps,
+                ),
+            ).toBe(1);
+            expect(deps.output.errors).toEqual([
+                "--move cannot be used when --files is BEATMAP_FILE_DIRECTORY: it would delete the cache it fills",
+            ]);
+            // Nothing was fetched, stored, or removed.
+            expect((await readdir(dump)).sort()).toEqual([
+                "1.osu",
+                "2.osu",
+                "4.osu",
+            ]);
+            expect(
+                await new BeatmapRepository(database.db).findById(1),
+            ).toBeNull();
+        },
+    );
 
     it.each([
         ["a file", (file: string) => file],
