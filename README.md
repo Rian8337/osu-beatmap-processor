@@ -128,11 +128,12 @@ CLI commands have their own rate limiter, on the bulk lane, so they do not share
 
 ## Upgrading from the pre-rewrite service
 
-1. Stop the service. Check that `POSTGRES_USERNAME` owns the `beatmap` table, since the migration alters it. Run `pnpm build`, then `NODE_ENV=production pnpm db:baseline` (without `NODE_ENV` it reads `.env.development`), then start the new build (`dist/index.mjs`, `NODE_ENV=production`, `.env.production`), which applies the second migration.
-2. With the service stopped or with split budgets: `fix-dates`, then `populate-cache --files <extracted dump>`.
-3. Set `BULK_SERVER_KEY` as `BEATMAP_SERVICE_KEY` on every dpp processor, and on the old dpp backend while it recalculates.
-4. Set `TRUST_PROXY` to match the reverse proxy before exposing the service, and choose `ANON_RATE_LIMIT`. Create database keys for public clients with `key create`; existing callers keep their built-in keys.
-5. Check that `INTERNAL_SERVER_KEY` is set in production. If it was unset, every caller had the priority lane until now; after this change they become anonymous (bulk lane, limited per IP) unless they get a key.
+1. Create `.env.production` from the old `.env`. The variable names are unchanged, but the old build read `.env` and the new one reads only `.env.${NODE_ENV}`. Keep `EXPRESS_PORT`, since the default is `3000`.
+2. Stop the service. Check that `POSTGRES_USERNAME` owns the `beatmap` table, since the migration alters it. Run `pnpm build`, then `NODE_ENV=production pnpm db:baseline` (without `NODE_ENV` it reads `.env.development`). Then start the new build (`dist/index.mjs`, `NODE_ENV=production`), which applies the second migration. Its entry point differs from the old build's `dist/index.js`, so update the process manager's entry.
+3. Optionally, with the service stopped or with split budgets: `fix-dates`, then `populate-cache --files <extracted dump>`.
+4. Give `BULK_SERVER_KEY` to the dpp processors as their `BEATMAP_SERVICE_KEY`. A caller that uses one variable both for its own callers' keys and for this service, as the old dpp backend does with `DROID_SERVER_INTERNAL_KEY`, keeps sending `INTERNAL_SERVER_KEY` (priority lane) unless its code changes.
+5. Set `TRUST_PROXY` to match the reverse proxy before exposing the service, and choose `ANON_RATE_LIMIT` (`0` keeps the pre-rewrite rule that a request without a key is rejected). Create database keys for public clients with `key create`; existing callers keep their built-in keys.
+6. Check that `INTERNAL_SERVER_KEY` is set in production, and that every caller sends either it or `BULK_SERVER_KEY`. When `INTERNAL_SERVER_KEY` was unset, the pre-rewrite service gave the priority lane to any key. The rewrite answers `401` to any key it does not recognise, so those callers would be rejected until it is set or they get a database key.
 
 ## Rolling back
 
