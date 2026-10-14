@@ -23,8 +23,10 @@ interface PacedQueue {
 function createPacedQueue(perMinute: number): PacedQueue {
     const intervalMs = Math.ceil(60_000 / perMinute);
 
-    // `strict` keeps a rolling window. The default fixed window can start two tasks one millisecond apart when a
-    // task is queued exactly at a window boundary (p-queue schedules a zero-delay timer that resets the count).
+    // `strict` keeps a rolling window: a task starts only once the previous start is a whole interval old. p-queue 9's
+    // default fixed window could start two tasks one millisecond apart when a task was queued exactly at a window
+    // boundary (it scheduled a zero-delay timer that reset the count). p-queue 10 handles that boundary; the rolling
+    // window is kept because it states the limit in start times and the tests pass with it unchanged.
     return {
         queue: new PQueue({
             interval: intervalMs,
