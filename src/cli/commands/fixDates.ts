@@ -66,7 +66,9 @@ export const fixDates: Command = (args) => {
                             continue;
                         }
 
-                        if (!checkedIds.has(row.beatmapId)) {
+                        const isFirstSighting = !checkedIds.has(row.beatmapId);
+
+                        if (isFirstSighting) {
                             checkedIds.add(row.beatmapId);
                             totals.checked++;
                         }
@@ -74,7 +76,10 @@ export const fixDates: Command = (args) => {
                         // A stored row whose file osu! has since changed is stale: leave it for its normal re-check to
                         // find, instead of freezing the old hash as ranked or loved.
                         if (old.fileMd5 !== row.fileMd5) {
-                            totals.changedFiles++;
+                            if (isFirstSighting) {
+                                totals.changedFiles++;
+                            }
+
                             continue;
                         }
 
