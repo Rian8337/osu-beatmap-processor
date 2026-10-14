@@ -56,6 +56,8 @@ node dist/index.mjs
 
 With PM2: `script: "dist/index.mjs"`, `env: { NODE_ENV: "production" }`. Pending database migrations are applied at startup. SIGTERM and SIGINT stop the server gracefully; SIGHUP reloads the keys.
 
+Graceful shutdown waits for in-flight requests, which may still be waiting for osu!, for up to the larger of `PRIORITY_MAX_WAIT_MS` and `BULK_MAX_WAIT_MS` plus 15 s (23 s with the defaults), then exits. PM2 sends SIGKILL after its `kill_timeout`, 1.6 s by default, which cuts that short: set `kill_timeout` above the deadline, for example `kill_timeout: 25000` with the defaults (the larger wait limit in milliseconds plus 17000 otherwise).
+
 ## Configuration
 
 Every variable is read once at startup, and a missing or invalid one stops the start with its name. An empty variable counts as unset.
@@ -100,7 +102,7 @@ When a request cannot be served within its lane's wait limit, or osu! answers `4
 
 ## CLI
 
-`node dist/cli.mjs <command>` (or `pnpm cli <command>`) uses the same environment as the server.
+`node dist/cli.mjs <command>` (or `pnpm cli <command>`) needs `pnpm build` first and reads the same `.env.${NODE_ENV}` as the server, so set `NODE_ENV=production` to use `.env.production`.
 
 ```
 Usage: node dist/cli.mjs <command>
@@ -118,7 +120,7 @@ Usage: node dist/cli.mjs <command>
 
 - `key create` prints the key once; store it then, it cannot be shown again. Key commands make no osu! calls.
 - After any key change, the running service applies it within `KEY_RELOAD_INTERVAL_SECONDS`, or at once after `pm2 sendSignal SIGHUP <app>`.
-- `db-baseline` (also `pnpm db:baseline`) records the first migration as applied without running it. Run it once against a database that already has the pre-rewrite `beatmap` table; a fresh database needs no baseline.
+- `db-baseline` (also `pnpm db:baseline`) records the first migration as applied without running it. Run it once against a database that already has the pre-rewrite `beatmap` table (after `pnpm build`, with `NODE_ENV=production` to use `.env.production`: `NODE_ENV=production pnpm db:baseline`); a fresh database needs no baseline.
 - `populate-cache` walks osu!'s list of ranked and approved beatmaps and stores them, resuming from where the last run stopped (`--restart` starts over). With `--files <dump directory>`, a beatmap's file is taken from the osu! file dump instead of downloaded, when it is there and its MD5 matches. Extract the dump on the same machine first (for example `tar -xjf 2026_09_01_osu_files.tar.bz2 -C /srv/dumps`) and pass the extracted directory. Use `--move` only when the dump is on the same filesystem as `BEATMAP_FILE_DIRECTORY` and is no longer needed. Missing and mismatched files are downloaded on demand later. It prints the beatmaps stored, files copied, files missing, and files mismatched.
 - `fix-dates` overwrites the dates and status of stored ranked, approved, and loved beatmaps with osu!'s values, which corrects the +8 hour dates in old rows. It never inserts. Other rows heal at their next re-check.
 
@@ -126,7 +128,7 @@ CLI commands have their own rate limiter, on the bulk lane, so they do not share
 
 ## Upgrading from the pre-rewrite service
 
-1. Stop the service. Check that `POSTGRES_USERNAME` owns the `beatmap` table, since the migration alters it. Run `pnpm db:baseline`, then start the new build (`dist/index.mjs`, `NODE_ENV=production`, `.env.production`), which applies the second migration.
+1. Stop the service. Check that `POSTGRES_USERNAME` owns the `beatmap` table, since the migration alters it. Run `pnpm build`, then `NODE_ENV=production pnpm db:baseline` (without `NODE_ENV` it reads `.env.development`), then start the new build (`dist/index.mjs`, `NODE_ENV=production`, `.env.production`), which applies the second migration.
 2. With the service stopped or with split budgets: `fix-dates`, then `populate-cache --files <extracted dump>`.
 3. Set `BULK_SERVER_KEY` as `BEATMAP_SERVICE_KEY` on every dpp processor, and on the old dpp backend while it recalculates.
 4. Set `TRUST_PROXY` to match the reverse proxy before exposing the service, and choose `ANON_RATE_LIMIT`. Create database keys for public clients with `key create`; existing callers keep their built-in keys.
