@@ -127,6 +127,56 @@ describe("dist/index.mjs", () => {
         }
     });
 
+    it("reloads the API keys on SIGHUP and keeps serving", async () => {
+        await using postgres = await startTestPostgres();
+        await using osu = await startStubOsu();
+        const directory = await mkdtemp(join(tmpdir(), "e2e-beatmaps-"));
+
+        osu.handle(createFakeOsuHandler(createGoldenOsuState()));
+
+        try {
+            const { port, env } = await buildEnvironment(
+                postgres.port,
+                osu.url,
+                directory,
+            );
+            const base = `http://127.0.0.1:${port.toString()}/api/beatmap`;
+            await using server = await startProcess({
+                script,
+                env,
+                readyUrl: `${base}/health`,
+            });
+
+            expect(server.output()).not.toContain("Reloaded API keys");
+
+            server.child.kill("SIGHUP");
+
+            await vi.waitFor(
+                () => {
+                    expect(server.output()).toMatch(
+                        /\[beatmap-service\] Reloaded API keys: \d+ keys \(2 built in\)/,
+                    );
+                },
+                { timeout: 15_000 },
+            );
+
+            expect(server.child.exitCode).toBeNull();
+            expect(server.child.signalCode).toBeNull();
+
+            const beatmap = await fetch(
+                `${base}/getbeatmap?id=75&key=${bulkKey}`,
+            );
+
+            expect(beatmap.status).toBe(200);
+
+            server.child.kill("SIGTERM");
+
+            expect(await server.exited).toBe(0);
+        } finally {
+            await rm(directory, { recursive: true, force: true });
+        }
+    });
+
     it("refuses to start on a pre-rewrite database that was never baselined", async () => {
         await using postgres = await startTestPostgres();
         await using osu = await startStubOsu();
