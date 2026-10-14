@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { OsuUnavailableError } from "../../src/osu/errors.js";
-import { OsuGateway } from "../../src/osu/OsuGateway.js";
-import { RateLimiter } from "../../src/osu/RateLimiter.js";
-import { startStubOsu, type StubOsu } from "../utils/stubOsu.js";
+import { OsuUnavailableError } from "@/osu/errors";
+import { OsuGateway } from "@/osu/OsuGateway";
+import { RateLimiter } from "@/osu/RateLimiter";
+import { startStubOsu, type StubOsu } from "@test/utils/stubOsu";
 
 const apiKey = "secret-osu-key";
 
@@ -35,7 +35,7 @@ describe("OsuGateway", () => {
             apiKey,
             apiBaseUrl: `${stub.url}/api`,
             fileBaseUrl: `${stub.url}/osu`,
-            limiter,
+            rateLimiter: limiter,
             timeoutMs: 200,
         });
     });
@@ -124,11 +124,7 @@ describe("OsuGateway", () => {
         const attempt = gateway.getBeatmap("priority", 1);
 
         await expect(attempt).rejects.toBeInstanceOf(OsuUnavailableError);
-        await attempt.catch((e: unknown) => {
-            expect(
-                e instanceof OsuUnavailableError && e.retryAfterSeconds,
-            ).toBe(42);
-        });
+        await expect(attempt).rejects.toMatchObject({ retryAfterSeconds: 42 });
         expect(pauseFor).toHaveBeenCalledWith(42_000);
         expect(stub.requests).toHaveLength(1);
         expect(
@@ -218,7 +214,7 @@ describe("OsuGateway", () => {
             apiKey,
             apiBaseUrl: "http://127.0.0.1:1/api",
             fileBaseUrl: "http://127.0.0.1:1/osu",
-            limiter,
+            rateLimiter: limiter,
             timeoutMs: 200,
         });
 
@@ -262,5 +258,39 @@ describe("OsuGateway", () => {
         expect(await gateway.tryGetBeatmapNow("priority", 1)).toBeUndefined();
         expect(tryNow).toHaveBeenCalledOnce();
         expect(stub.requests).toEqual([]);
+    });
+
+    it("lists osu!standard beatmaps approved since a date, 500 at a time", async () => {
+        stub.handle(json([beatmap(5), beatmap(6)]));
+
+        expect(
+            await gateway.getBeatmapsSince(
+                "bulk",
+                new Date("2007-01-02T03:04:05Z"),
+            ),
+        ).toHaveLength(2);
+        expect(stub.requests).toEqual([
+            `/api/get_beatmaps?k=${apiKey}&since=2007-01-02%2003%3A04%3A05&m=0&limit=500`,
+        ]);
+    });
+
+    it("re-checks a beatmapset only when the limiter is idle", async () => {
+        stub.handle(json([beatmap(5), beatmap(6, "1")]));
+
+        expect(await gateway.tryGetBeatmapsetNow("priority", 1)).toHaveLength(
+            2,
+        );
+        expect(stub.requests).toEqual([`/api/get_beatmaps?k=${apiKey}&s=1`]);
+
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        stub.handle(json([]));
+
+        expect(await gateway.tryGetBeatmapsetNow("priority", 2)).toBeNull();
+
+        vi.spyOn(limiter, "tryNow").mockResolvedValue(undefined);
+
+        expect(
+            await gateway.tryGetBeatmapsetNow("priority", 1),
+        ).toBeUndefined();
     });
 });

@@ -1,9 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { OsuUnavailableError } from "../../src/osu/errors.js";
-import {
-    RateLimiter,
-    type RateLimiterOptions,
-} from "../../src/osu/RateLimiter.js";
+import { OsuUnavailableError } from "@/osu/errors";
+import { RateLimiter, type RateLimiterOptions } from "@/osu/RateLimiter";
 
 const relaxed: RateLimiterOptions = {
     ratesPerMinute: { api: 60, file: 60, total: 60 },
@@ -222,18 +219,24 @@ describe("RateLimiter", () => {
             limiter.schedule("priority", "file", task("early")),
         ).toThrow(OsuUnavailableError);
 
+        let thrown: unknown;
+
         try {
             void limiter.schedule("priority", "api", task("early"));
         } catch (e) {
-            expect(e).toBeInstanceOf(OsuUnavailableError);
-
-            // The remaining pause plus two queue intervals (the queued call and this one).
-            const retryAfter =
-                e instanceof OsuUnavailableError ? e.retryAfterSeconds : 0;
-
-            expect(retryAfter).toBeGreaterThanOrEqual(30);
-            expect(retryAfter).toBeLessThanOrEqual(32);
+            thrown = e;
         }
+
+        expect(thrown).toBeInstanceOf(OsuUnavailableError);
+
+        // The remaining pause plus two queue intervals (the queued call and this one).
+        const retryAfter =
+            thrown instanceof OsuUnavailableError
+                ? thrown.retryAfterSeconds
+                : 0;
+
+        expect(retryAfter).toBeGreaterThanOrEqual(30);
+        expect(retryAfter).toBeLessThanOrEqual(32);
 
         await vi.advanceTimersByTimeAsync(29_999);
 
