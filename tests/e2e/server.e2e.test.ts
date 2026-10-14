@@ -13,6 +13,8 @@ vi.setConfig({ testTimeout: 120_000 });
 
 const script = fileURLToPath(new URL("../../dist/index.mjs", import.meta.url));
 const bulkKey = "e2e-bulk-key";
+const priorityKey = "e2e-priority-key";
+const osuKey = "e2e-osu-key";
 
 async function buildEnvironment(
     postgresPort: number,
@@ -32,8 +34,8 @@ async function buildEnvironment(
             POSTGRES_PORT: postgresPort.toString(),
             POSTGRES_DB_NAME: "postgres",
             POSTGRES_USERNAME: "postgres",
-            OSU_API_KEY: "e2e-osu-key",
-            INTERNAL_SERVER_KEY: "e2e-priority-key",
+            OSU_API_KEY: osuKey,
+            INTERNAL_SERVER_KEY: priorityKey,
             BULK_SERVER_KEY: bulkKey,
             OSU_API_BASE_URL: `${osuUrl}/api`,
             OSU_FILE_BASE_URL: `${osuUrl}/osu`,
@@ -108,7 +110,18 @@ describe("dist/index.mjs", () => {
             server.child.kill("SIGTERM");
 
             expect(await server.exited).toBe(0);
-            expect(server.output()).toContain("[beatmap-service]");
+            const output = server.output();
+            const lines = output.split("\n").filter((line) => line !== "");
+
+            expect(lines.length).toBeGreaterThan(0);
+
+            for (const line of lines) {
+                expect(line.startsWith("[beatmap-service]")).toBe(true);
+            }
+
+            for (const key of [bulkKey, priorityKey, osuKey]) {
+                expect(output.includes(key)).toBe(false);
+            }
         } finally {
             await rm(directory, { recursive: true, force: true });
         }
@@ -125,19 +138,22 @@ describe("dist/index.mjs", () => {
             database: "postgres",
         });
 
-        await client.connect();
-        await client.query(
-            await readFile(
-                fileURLToPath(
-                    new URL(
-                        "../fixtures/production-schema.sql",
-                        import.meta.url,
+        try {
+            await client.connect();
+            await client.query(
+                await readFile(
+                    fileURLToPath(
+                        new URL(
+                            "../fixtures/production-schema.sql",
+                            import.meta.url,
+                        ),
                     ),
+                    "utf8",
                 ),
-                "utf8",
-            ),
-        );
-        await client.end();
+            );
+        } finally {
+            await client.end();
+        }
 
         try {
             const { port, env } = await buildEnvironment(
