@@ -40,6 +40,18 @@ describe("BeatmapFileStore", () => {
         expect(await readdir(directory)).toEqual(["75.osu"]);
     });
 
+    it("creates the directory again when it was removed after an earlier write", async () => {
+        const directory = join(root, "beatmaps");
+        const store = new BeatmapFileStore({ beatmapFileDirectory: directory });
+
+        await store.write(75, Buffer.from("first"));
+        await rm(directory, { recursive: true });
+        await store.write(76, Buffer.from("second"));
+
+        expect(await readdir(directory)).toEqual(["76.osu"]);
+        expect(await store.read(76)).toEqual(Buffer.from("second"));
+    });
+
     it("leaves a whole file when writes race, and no temporary files", async () => {
         const store = new BeatmapFileStore({ beatmapFileDirectory: root });
         const a = Buffer.alloc(1 << 20, "a");

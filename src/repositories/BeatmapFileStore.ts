@@ -43,6 +43,29 @@ export class BeatmapFileStore implements IBeatmapFileStore {
     async write(beatmapId: number, data: Buffer): Promise<void> {
         await this.ensureDirectory();
 
+        try {
+            await this.writeAtomically(beatmapId, data);
+        } catch (e) {
+            if (!isMissing(e)) {
+                throw e;
+            }
+
+            // The directory was removed while running: forget that it was created, create it again, and retry once.
+            this.directoryCreation = undefined;
+
+            await this.ensureDirectory();
+            await this.writeAtomically(beatmapId, data);
+        }
+    }
+
+    async delete(beatmapId: number): Promise<void> {
+        await rm(this.getFilePath(beatmapId), { force: true });
+    }
+
+    private async writeAtomically(
+        beatmapId: number,
+        data: Buffer,
+    ): Promise<void> {
         const target = this.getFilePath(beatmapId);
         // A reader or a crash never sees a partial file: the rename replaces the file in one step.
         const temporary = `${target}.${randomBytes(6).toString("hex")}.tmp`;
@@ -55,10 +78,6 @@ export class BeatmapFileStore implements IBeatmapFileStore {
 
             throw e;
         }
-    }
-
-    async delete(beatmapId: number): Promise<void> {
-        await rm(this.getFilePath(beatmapId), { force: true });
     }
 
     private getFilePath(beatmapId: number): string {
