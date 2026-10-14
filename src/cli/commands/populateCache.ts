@@ -3,7 +3,7 @@ import { computeMD5 } from "@/beatmaps/md5";
 import { expectPositionals, parseArguments } from "@/cli/arguments";
 import { CliError } from "@/cli/errors";
 import { walkSince } from "@/cli/SinceWalker";
-import type { Command } from "@/cli/types";
+import type { CliOutput, Command } from "@/cli/types";
 import type { BeatmapRow } from "@/database/types";
 import { BeatmapFileStore } from "@/repositories/BeatmapFileStore";
 import { BeatmapRepository } from "@/repositories/BeatmapRepository";
@@ -12,8 +12,6 @@ import { getErrorMessage } from "@/utils/getErrorMessage";
 import { RankedStatus } from "@rian8337/osu-base";
 import { readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
-
-type FileOutcome = "copied" | "missing" | "mismatched";
 
 function hasErrorCode(error: unknown, ...codes: string[]): boolean {
     return (
@@ -39,15 +37,42 @@ async function isDirectory(path: string): Promise<boolean> {
 }
 
 /**
+ * What happened to a beatmap's file in the dump: `copied`; `missing` (not in the dump, whether it was never there or an
+ * earlier `--move` already took it); `mismatched` (its MD5 is not the beatmap's); or `failed` (the dump file could not
+ * be read).
+ */
+type FileOutcome = "copied" | "missing" | "mismatched" | "failed";
+
+/**
+ * Keeps the stored max combo when osu! sends none for the same file, as the beatmap service does: the stored one was
+ * backfilled from the file. A different file (hash) drops it.
+ */
+function keepStoredMaxCombo(
+    row: BeatmapRow,
+    stored: BeatmapRow | undefined,
+): BeatmapRow {
+    if (row.maxCombo !== null || !stored || stored.fileMd5 !== row.fileMd5) {
+        return row;
+    }
+
+    return { ...row, maxCombo: stored.maxCombo };
+}
+
+/**
  * Copies (or moves) a beatmap's file from an extracted osu! file dump when its MD5 matches.
+ *
+ * Only problems with the dump are handled here, since one bad dump file must not stop the walk: it is reported and the
+ * file is downloaded on demand later. A failure to write the store propagates, because it affects every file.
  */
 async function importFile(
     store: BeatmapFileStore,
+    output: CliOutput,
     directory: string,
     row: BeatmapRow,
     move: boolean,
 ): Promise<FileOutcome> {
-    const source = join(directory, `${row.beatmapId.toString()}.osu`);
+    const id = row.beatmapId.toString();
+    const source = join(directory, `${id}.osu`);
     let data: Buffer;
 
     try {
@@ -57,7 +82,11 @@ async function importFile(
             return "missing";
         }
 
-        throw e;
+        output.error(
+            `Failed to read the file of beatmap ${id} from the dump: ${getErrorMessage(e)}`,
+        );
+
+        return "failed";
     }
 
     if (computeMD5(data) !== row.fileMd5) {
@@ -67,7 +96,13 @@ async function importFile(
     await store.write(row.beatmapId, data);
 
     if (move) {
-        await rm(source);
+        try {
+            await rm(source);
+        } catch (e) {
+            output.error(
+                `Copied beatmap ${id} but could not remove it from the dump: ${getErrorMessage(e)}`,
+            );
+        }
     }
 
     return "copied";
@@ -125,7 +160,7 @@ export const populateCache: Command = (args) => {
                 command: "populate-cache",
                 shouldRestart: restart,
                 processPage: async (page) => {
-                    const rows = page
+                    const fresh = page
                         .filter((response) => {
                             const status = Number(response.approved);
 
@@ -135,6 +170,16 @@ export const populateCache: Command = (args) => {
                             );
                         })
                         .map((response) => convertApiResponseToRow(response));
+                    const stored = new Map(
+                        (
+                            await beatmaps.findByIds(
+                                fresh.map((row) => row.beatmapId),
+                            )
+                        ).map((row) => [row.beatmapId, row]),
+                    );
+                    const rows = fresh.map((row) =>
+                        keepStoredMaxCombo(row, stored.get(row.beatmapId)),
+                    );
 
                     await beatmaps.upsert(rows);
 
@@ -150,18 +195,15 @@ export const populateCache: Command = (args) => {
 
                     if (dump !== undefined) {
                         for (const row of newRows) {
-                            // One unreadable or unwritable file must not stop the walk: the beatmap is stored, and its
-                            // file is downloaded on demand later.
-                            try {
-                                totals[
-                                    await importFile(store, dump, row, move)
-                                ]++;
-                            } catch (e) {
-                                totals.failed++;
-                                deps.output.error(
-                                    `Failed to import the file of beatmap ${row.beatmapId.toString()}: ${getErrorMessage(e)}`,
-                                );
-                            }
+                            totals[
+                                await importFile(
+                                    store,
+                                    deps.output,
+                                    dump,
+                                    row,
+                                    move,
+                                )
+                            ]++;
                         }
                     }
 

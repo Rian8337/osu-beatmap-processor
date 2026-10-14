@@ -10,6 +10,7 @@ import { FakeOsuGateway } from "@test/fakes/FakeOsuGateway";
 import { createCliDependencies } from "@test/utils/cli";
 import { testConfig } from "@test/utils/config";
 import { createTestDatabase } from "@test/utils/database";
+import { buildBeatmapRow } from "@test/utils/rows";
 import {
     mkdir,
     mkdtemp,
@@ -23,6 +24,13 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 30_000 });
+
+// Lets a test make `rm` fail, which a root-run test cannot do with permissions.
+vi.mock("node:fs/promises", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("node:fs/promises")>();
+
+    return { ...actual, rm: vi.fn(actual.rm) };
+});
 
 describe("populate-cache", () => {
     let dump: string;
@@ -207,7 +215,8 @@ describe("populate-cache", () => {
             );
         }
 
-        // The dump already holds other versions of files 1, 2, and 4 (mismatched).
+        // The dump's files 1, 2, and 4 (from beforeEach) have other contents than these beatmaps' hashes, so they are
+        // mismatched; files 499-501 match.
         for (const id of [499, 500, 501]) {
             await writeFile(
                 join(dump, `${id.toString()}.osu`),
@@ -240,12 +249,122 @@ describe("populate-cache", () => {
         expect(await readdir(beatmapDirectory)).toEqual(["1.osu"]);
         expect(deps.output.errors).toEqual([
             expect.stringMatching(
-                /^Failed to import the file of beatmap 2: EISDIR/,
+                /^Failed to read the file of beatmap 2 from the dump: EISDIR/,
             ),
         ]);
         expect(deps.output.lines.at(-1)).toBe(
             "Done: 4 beatmaps stored, 1 files copied, 1 missing, 1 mismatched, 1 failed",
         );
+    });
+
+    it("copies the file and warns when --move cannot remove it from the dump", async () => {
+        await using database = await createTestDatabase();
+        const deps = dependencies(database.db);
+
+        vi.mocked(rm).mockImplementation((path, options) =>
+            String(path).endsWith(".osu")
+                ? Promise.reject(new Error("EACCES: permission denied"))
+                : vi
+                      .importActual<typeof import("node:fs/promises")>(
+                          "node:fs/promises",
+                      )
+                      .then((actual) => actual.rm(path, options)),
+        );
+
+        expect(
+            await runCli(["populate-cache", "--files", dump, "--move"], deps),
+        ).toBe(0);
+
+        expect((await readdir(beatmapDirectory)).sort()).toEqual([
+            "1.osu",
+            "2.osu",
+        ]);
+        expect(deps.output.errors).toEqual([
+            "Copied beatmap 1 but could not remove it from the dump: EACCES: permission denied",
+            "Copied beatmap 2 but could not remove it from the dump: EACCES: permission denied",
+        ]);
+        expect(deps.output.lines.at(-1)).toBe(
+            "Done: 4 beatmaps stored, 2 files copied, 1 missing, 1 mismatched",
+        );
+    });
+
+    it("stops without moving the cursor when the beatmap files cannot be written", async () => {
+        await using database = await createTestDatabase();
+        // The store's directory is a regular file, so every write fails.
+        const notADirectory = join(beatmapDirectory, "not-a-directory");
+
+        await writeFile(notADirectory, "");
+
+        const deps = createCliDependencies(database.db, {
+            loadConfig: () => ({
+                ...testConfig,
+                beatmapFileDirectory: notADirectory,
+            }),
+            createOsuGateway: () => osuGateway(),
+        });
+
+        expect(
+            await runCli(["populate-cache", "--files", dump, "--move"], deps),
+        ).toBe(1);
+
+        expect(deps.output.errors).toEqual([
+            expect.stringMatching(/^The command failed: Error: EEXIST/),
+        ]);
+        expect(
+            await new CursorRepository(database.db).getCursor("populate-cache"),
+        ).toBeNull();
+        // Nothing was removed from the dump.
+        expect((await readdir(dump)).sort()).toEqual([
+            "1.osu",
+            "2.osu",
+            "4.osu",
+        ]);
+    });
+
+    describe("when osu! sends no max combo", () => {
+        async function runWithStoredBeatmap(
+            storedMd5: string,
+            osuMaxCombo: string | null,
+        ) {
+            await using database = await createTestDatabase();
+            const beatmaps = new BeatmapRepository(database.db);
+            const stored = buildBeatmapRow({
+                beatmap_id: "1",
+                file_md5: storedMd5,
+                max_combo: "500",
+            });
+
+            await beatmaps.upsert([stored]);
+
+            const gateway = new FakeOsuGateway().addBeatmaps(
+                buildApiBeatmap({
+                    beatmap_id: "1",
+                    file_md5: "a".repeat(32),
+                    max_combo: osuMaxCombo,
+                }),
+            );
+
+            expect(
+                await runCli(
+                    ["populate-cache"],
+                    dependencies(database.db, gateway),
+                ),
+            ).toBe(0);
+
+            return (await beatmaps.findById(1))?.maxCombo;
+        }
+
+        it("keeps a backfilled max combo of the same file", async () => {
+            expect(await runWithStoredBeatmap("a".repeat(32), null)).toBe(500);
+        });
+
+        it("drops it when the file changed", async () => {
+            expect(await runWithStoredBeatmap("b".repeat(32), null)).toBeNull();
+        });
+
+        it("takes osu!'s own max combo when it sends one", async () => {
+            expect(await runWithStoredBeatmap("a".repeat(32), "300")).toBe(300);
+        });
     });
 
     it.each([
