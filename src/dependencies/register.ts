@@ -7,6 +7,7 @@ import type { DependencyContainer } from "tsyringe";
 import "@/osu/OsuGateway";
 import "@/repositories";
 import "@/services";
+import "@/access";
 import { dependencyTokens } from "./tokens";
 
 /**

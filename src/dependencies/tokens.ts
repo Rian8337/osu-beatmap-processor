@@ -2,10 +2,12 @@ import type { Config } from "@/config/config";
 import type { Database } from "@/database/types";
 import type { IOsuGateway } from "@/osu/IOsuGateway";
 import type { OsuGatewayOptions } from "@/osu/OsuGateway";
+import type { IKeyService } from "@/access/IKeyService";
 import type { IBeatmapFileStore } from "@/repositories/IBeatmapFileStore";
 import type { IBeatmapRepository } from "@/repositories/IBeatmapRepository";
 import type { IBeatmapsetRepository } from "@/repositories/IBeatmapsetRepository";
 import type { ICursorRepository } from "@/repositories/ICursorRepository";
+import type { IKeyRepository } from "@/repositories/IKeyRepository";
 import type { IBeatmapFileService } from "@/services/IBeatmapFileService";
 import type { IBeatmapsetService } from "@/services/IBeatmapsetService";
 import type { IBeatmapService } from "@/services/IBeatmapService";
@@ -44,4 +46,8 @@ export const dependencyTokens = {
     beatmapsetService: Symbol.for(
         "beatmapsetService",
     ) as InjectionToken<IBeatmapsetService>,
+    keyRepository: Symbol.for(
+        "keyRepository",
+    ) as InjectionToken<IKeyRepository>,
+    keyService: Symbol.for("keyService") as InjectionToken<IKeyService>,
 } satisfies Record<string, InjectionToken<unknown>>;
