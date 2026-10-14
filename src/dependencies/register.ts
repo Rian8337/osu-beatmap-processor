@@ -6,6 +6,7 @@ import type { DependencyContainer } from "tsyringe";
 // Load injectable classes so their metadata is registered.
 import "@/osu/OsuGateway";
 import "@/repositories";
+import "@/services";
 import { dependencyTokens } from "./tokens";
 
 /**

@@ -6,6 +6,7 @@ import type { IBeatmapFileStore } from "@/repositories/IBeatmapFileStore";
 import type { IBeatmapRepository } from "@/repositories/IBeatmapRepository";
 import type { IBeatmapsetRepository } from "@/repositories/IBeatmapsetRepository";
 import type { ICursorRepository } from "@/repositories/ICursorRepository";
+import type { IBeatmapService } from "@/services/IBeatmapService";
 import type { InjectionToken } from "tsyringe";
 
 /**
@@ -32,4 +33,7 @@ export const dependencyTokens = {
     beatmapFileStore: Symbol.for(
         "beatmapFileStore",
     ) as InjectionToken<IBeatmapFileStore>,
+    beatmapService: Symbol.for(
+        "beatmapService",
+    ) as InjectionToken<IBeatmapService>,
 } satisfies Record<string, InjectionToken<unknown>>;
