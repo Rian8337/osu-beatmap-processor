@@ -297,8 +297,7 @@ describe("BeatmapsetService", () => {
         ).rejects.toBeInstanceOf(OsuUnavailableError);
     });
 
-    it("logs a failed re-check and serves the stored set", async () => {
-        const log = silenceConsoleErrors();
+    it("serves the stored set when the re-check finds osu! unavailable", async () => {
         const beatmapRepository = new FakeBeatmapRepository(
             buildBeatmapRow({ approved: "-2" }, twoDaysAgo()),
         );
@@ -309,10 +308,6 @@ describe("BeatmapsetService", () => {
         osuGateway.unavailableForSeconds = 5;
 
         expect(ids(await service.getBeatmapset("priority", 1))).toEqual([75]);
-        expect(log).toHaveBeenCalledWith(
-            "Failed to re-check beatmapset 1:",
-            expect.any(String),
-        );
     });
 
     it("logs a failed delete of a set osu! no longer has", async () => {
@@ -379,5 +374,117 @@ describe("BeatmapsetService", () => {
         await service.getBeatmapset("priority", 1);
 
         expect(beatmapRepository.readCount).toBeGreaterThan(readsAfterFirst);
+    });
+
+    it("stops serving a beatmap osu! no longer lists from the single-beatmap cache", async () => {
+        const beatmapRepository = new FakeBeatmapRepository(
+            buildBeatmapRow({ approved: "-2" }),
+            buildBeatmapRow({
+                beatmap_id: "76",
+                approved: "-2",
+                file_md5: "1".repeat(32),
+            }),
+        );
+        const { osuGateway, beatmapsetRepository, beatmapService, service } =
+            setup(beatmapRepository);
+
+        beatmapsetRepository.lastCheckedById.set(1, twoDaysAgo());
+        osuGateway.addBeatmaps(buildApiBeatmap({ approved: "-2" }));
+        await service.getBeatmapset("priority", 1);
+        osuGateway.calls.length = 0;
+
+        expect(
+            await beatmapService.getBeatmap("priority", { id: 76 }),
+        ).toBeNull();
+        expect(osuGateway.calls).toEqual(["getBeatmap priority 76"]);
+    });
+
+    it("stops resolving the old hash of a rehashed beatmap from memory", async () => {
+        const beatmapRepository = new FakeBeatmapRepository(
+            buildBeatmapRow({ approved: "-2", file_md5: "a".repeat(32) }),
+        );
+        const { osuGateway, beatmapsetRepository, beatmapService, service } =
+            setup(beatmapRepository);
+
+        beatmapsetRepository.lastCheckedById.set(1, twoDaysAgo());
+        osuGateway.addBeatmaps(
+            buildApiBeatmap({ approved: "-2", file_md5: "b".repeat(32) }),
+        );
+        await service.getBeatmapset("priority", 1);
+        osuGateway.calls.length = 0;
+
+        expect(
+            await beatmapService.getBeatmap("priority", {
+                hash: "a".repeat(32),
+            }),
+        ).toBeNull();
+        expect(osuGateway.calls).toEqual([
+            `getBeatmap priority ${"a".repeat(32)}`,
+        ]);
+    });
+
+    it("stops serving the beatmaps of a deleted set from the single-beatmap cache", async () => {
+        const beatmapRepository = new FakeBeatmapRepository(
+            buildBeatmapRow({ approved: "-2" }),
+        );
+        const { osuGateway, beatmapsetRepository, beatmapService, service } =
+            setup(beatmapRepository);
+
+        beatmapsetRepository.lastCheckedById.set(1, twoDaysAgo());
+        await service.getBeatmapset("priority", 1);
+        osuGateway.calls.length = 0;
+
+        expect(
+            await beatmapService.getBeatmap("priority", { id: 75 }),
+        ).toBeNull();
+        expect(osuGateway.calls).toEqual(["getBeatmap priority 75"]);
+    });
+
+    it("deletes the other stale files when one delete fails, and logs it", async () => {
+        const log = silenceConsoleErrors();
+        const beatmapRepository = new FakeBeatmapRepository(
+            buildBeatmapRow({ approved: "-2" }, twoDaysAgo()),
+            buildBeatmapRow(
+                { beatmap_id: "76", approved: "-2", file_md5: "1".repeat(32) },
+                twoDaysAgo(),
+            ),
+            buildBeatmapRow(
+                { beatmap_id: "77", approved: "-2", file_md5: "2".repeat(32) },
+                twoDaysAgo(),
+            ),
+        );
+        const { osuGateway, beatmapsetRepository, beatmapFileStore, service } =
+            setup(beatmapRepository);
+        const realDelete = beatmapFileStore.delete.bind(beatmapFileStore);
+
+        vi.spyOn(beatmapFileStore, "delete").mockImplementation(
+            async (beatmapId) => {
+                if (beatmapId === 75) {
+                    throw new Error("EACCES: permission denied");
+                }
+
+                await realDelete(beatmapId);
+            },
+        );
+        beatmapsetRepository.lastCheckedById.set(1, twoDaysAgo());
+
+        for (const id of [75, 76, 77]) {
+            beatmapFileStore.files.set(id, Buffer.from("old"));
+        }
+
+        osuGateway.addBeatmaps(
+            buildApiBeatmap({
+                beatmap_id: "78",
+                approved: "-2",
+                file_md5: "3".repeat(32),
+            }),
+        );
+
+        expect(ids(await service.getBeatmapset("priority", 1))).toEqual([78]);
+        expect([...beatmapFileStore.files.keys()]).toEqual([75]);
+        expect(log).toHaveBeenCalledWith(
+            "Failed to delete the file of beatmap 75:",
+            expect.any(String),
+        );
     });
 });

@@ -111,11 +111,6 @@ export class BeatmapsetService implements IBeatmapsetService {
             if (!(e instanceof OsuUnavailableError)) {
                 throw e;
             }
-
-            console.error(
-                `Failed to re-check beatmapset ${beatmapsetId.toString()}:`,
-                getErrorMessage(e),
-            );
         }
 
         if (responses === undefined) {
@@ -184,6 +179,41 @@ export class BeatmapsetService implements IBeatmapsetService {
             .map((response) => convertApiResponseToRow(response, checkedAt))
             .sort(byBeatmapId);
 
+        const stale = await this.commitBeatmapset(
+            beatmapsetId,
+            rows,
+            checkedAt,
+            previous,
+        );
+
+        // Files of removed beatmaps, and of beatmaps whose file changed, are stale.
+        for (const row of stale) {
+            this.beatmapService.evictBeatmap(row);
+        }
+
+        await this.deleteFiles(stale.map((row) => row.beatmapId));
+
+        const entry = {
+            rows: this.beatmapService.cacheBeatmaps(rows),
+            lastChecked: checkedAt,
+        };
+
+        this.beatmapsetCache.set(beatmapsetId, entry);
+
+        return entry.rows;
+    }
+
+    /**
+     * Replaces the stored set.
+     *
+     * @returns The previously stored rows that are stale, or none if storing failed (the failure is logged).
+     */
+    private async commitBeatmapset(
+        beatmapsetId: number,
+        rows: readonly BeatmapRow[],
+        checkedAt: Date,
+        previous: readonly BeatmapRow[] | null,
+    ): Promise<readonly BeatmapRow[]> {
         try {
             const before =
                 previous ??
@@ -198,55 +228,64 @@ export class BeatmapsetService implements IBeatmapsetService {
             const fresh = new Map(
                 rows.map((row) => [row.beatmapId, row.fileMd5]),
             );
-            // Files of removed beatmaps, and of beatmaps whose file changed, are stale.
-            const stale = before.filter(
+
+            return before.filter(
                 (row) =>
                     removed.has(row.beatmapId) ||
                     (fresh.has(row.beatmapId) &&
                         fresh.get(row.beatmapId) !== row.fileMd5),
             );
-
-            for (const row of stale) {
-                this.beatmapService.evictBeatmap(row);
-                await this.beatmapFileStore.delete(row.beatmapId);
-            }
         } catch (e) {
             console.error(
                 `Failed to store beatmapset ${beatmapsetId.toString()}:`,
                 getErrorMessage(e),
             );
+
+            return [];
         }
-
-        const entry = {
-            rows: this.beatmapService.cacheBeatmaps(rows),
-            lastChecked: checkedAt,
-        };
-
-        this.beatmapsetCache.set(beatmapsetId, entry);
-
-        return entry.rows;
     }
 
     private async drop(
         beatmapsetId: number,
         previous: readonly BeatmapRow[],
     ): Promise<void> {
-        for (const row of previous) {
-            this.beatmapService.evictBeatmap(row);
-        }
+        let removed: number[];
 
         try {
-            for (const id of await this.beatmapsetRepository.deleteBeatmapset(
-                beatmapsetId,
-            )) {
-                await this.beatmapFileStore.delete(id);
-            }
+            removed =
+                await this.beatmapsetRepository.deleteBeatmapset(beatmapsetId);
         } catch (e) {
             console.error(
                 `Failed to delete beatmapset ${beatmapsetId.toString()}:`,
                 getErrorMessage(e),
             );
+
+            return;
         }
+
+        for (const row of previous) {
+            this.beatmapService.evictBeatmap(row);
+        }
+
+        await this.deleteFiles(removed);
+    }
+
+    /**
+     * Deletes beatmap files independently: a failed delete is logged and the others still run.
+     */
+    private async deleteFiles(beatmapIds: readonly number[]): Promise<void> {
+        await Promise.all(
+            beatmapIds.map(async (beatmapId) => {
+                try {
+                    await this.beatmapFileStore.delete(beatmapId);
+                } catch (e) {
+                    console.error(
+                        `Failed to delete the file of beatmap ${beatmapId.toString()}:`,
+                        getErrorMessage(e),
+                    );
+                }
+            }),
+        );
     }
 
     private needsRecheck(set: CachedSet): boolean {
