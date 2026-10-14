@@ -3,6 +3,7 @@ import { runCli } from "@/cli/run";
 import { KeyRepository } from "@/repositories/KeyRepository";
 import { createCliDependencies } from "@test/utils/cli";
 import { createTestDatabase } from "@test/utils/database";
+import { DrizzleQueryError } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 describe("key commands", () => {
@@ -148,9 +149,11 @@ describe("key commands", () => {
 
                         // Shaped like drizzle's error: the message embeds the parameters, the cause is the driver's.
                         return Promise.reject(
-                            new Error(`Failed query: insert params: ${hash}`, {
-                                cause: new Error("connection terminated"),
-                            }),
+                            new DrizzleQueryError(
+                                "insert into api_keys",
+                                [hash],
+                                new Error("connection terminated"),
+                            ),
                         );
                     },
                 });
