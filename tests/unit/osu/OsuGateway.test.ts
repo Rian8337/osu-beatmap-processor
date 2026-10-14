@@ -292,5 +292,6 @@ describe("OsuGateway", () => {
         expect(
             await gateway.tryGetBeatmapsetNow("priority", 1),
         ).toBeUndefined();
+        expect(stub.requests).toHaveLength(2);
     });
 });

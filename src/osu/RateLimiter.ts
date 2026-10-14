@@ -20,7 +20,7 @@ interface PacedQueue {
     lastStartMs: number;
 }
 
-function paced(perMinute: number): PacedQueue {
+function createPacedQueue(perMinute: number): PacedQueue {
     const intervalMs = Math.ceil(60_000 / perMinute);
 
     // `strict` keeps a rolling window. The default fixed window can start two tasks one millisecond apart when a
@@ -54,19 +54,21 @@ export class RateLimiter {
         const { ratesPerMinute, bulkShare } = options;
 
         this.kindQueues = {
-            api: paced(ratesPerMinute.api),
-            file: paced(ratesPerMinute.file),
+            api: createPacedQueue(ratesPerMinute.api),
+            file: createPacedQueue(ratesPerMinute.file),
         };
-        this.totalQueue = paced(ratesPerMinute.total);
+        this.totalQueue = createPacedQueue(ratesPerMinute.total);
         this.bulkQueues = {
-            api: paced(
+            api: createPacedQueue(
                 bulkShare * Math.min(ratesPerMinute.api, ratesPerMinute.total),
             ),
-            file: paced(
+            file: createPacedQueue(
                 bulkShare * Math.min(ratesPerMinute.file, ratesPerMinute.total),
             ),
         };
-        this.bulkTotalQueue = paced(bulkShare * ratesPerMinute.total);
+        this.bulkTotalQueue = createPacedQueue(
+            bulkShare * ratesPerMinute.total,
+        );
         this.maxWaitMs = options.maxWaitMs;
     }
 
@@ -81,7 +83,7 @@ export class RateLimiter {
             throw new OsuUnavailableError(waitMs / 1000);
         }
 
-        return this.run(this.path(lane, kind), priorityOf[lane], fn);
+        return this.run(this.getQueuePath(lane, kind), priorityOf[lane], fn);
     }
 
     tryNow<T>(
@@ -89,7 +91,7 @@ export class RateLimiter {
         kind: RequestKind,
         fn: () => Promise<T>,
     ): Promise<T | undefined> {
-        const path = this.path(lane, kind);
+        const path = this.getQueuePath(lane, kind);
         const idle =
             this.remainingPauseMs() === 0 &&
             path.every(
@@ -106,7 +108,7 @@ export class RateLimiter {
 
     estimateWaitMs(lane: Lane, kind: RequestKind): number {
         const queueWaitMs = Math.max(
-            ...this.path(lane, kind).map(({ queue, intervalMs }) => {
+            ...this.getQueuePath(lane, kind).map(({ queue, intervalMs }) => {
                 const ahead =
                     lane === "priority"
                         ? queue.sizeBy({ priority: priorityOf.priority })
@@ -128,7 +130,7 @@ export class RateLimiter {
 
         this.pausedUntil = until;
 
-        for (const { queue } of this.allQueues()) {
+        for (const { queue } of this.listAllQueues()) {
             queue.pause();
         }
 
@@ -136,7 +138,7 @@ export class RateLimiter {
         this.resumeTimer = setTimeout(() => {
             this.resumeTimer = undefined;
 
-            for (const { queue } of this.allQueues()) {
+            for (const { queue } of this.listAllQueues()) {
                 queue.start();
             }
         }, ms);
@@ -147,7 +149,7 @@ export class RateLimiter {
         return Math.max(0, this.pausedUntil - Date.now());
     }
 
-    private path(lane: Lane, kind: RequestKind): PacedQueue[] {
+    private getQueuePath(lane: Lane, kind: RequestKind): PacedQueue[] {
         const shared = [this.kindQueues[kind], this.totalQueue];
 
         return lane === "bulk"
@@ -155,7 +157,7 @@ export class RateLimiter {
             : shared;
     }
 
-    private allQueues(): PacedQueue[] {
+    private listAllQueues(): PacedQueue[] {
         return [
             this.kindQueues.api,
             this.kindQueues.file,

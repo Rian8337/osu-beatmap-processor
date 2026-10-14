@@ -98,7 +98,7 @@ export class OsuGateway implements IOsuGateway {
             this.beatmapQuery(idOrHash),
         );
 
-        return OsuGateway.firstStandard(list);
+        return OsuGateway.findFirstStandard(list);
     }
 
     async getBeatmapset(
@@ -118,7 +118,7 @@ export class OsuGateway implements IOsuGateway {
     }
 
     downloadFile(lane: Lane, id: number): Promise<Buffer | null> {
-        return this.shared(`${lane}:file:${id.toString()}`, () =>
+        return this.shareInFlight(`${lane}:file:${id.toString()}`, () =>
             this.options.rateLimiter.schedule(lane, "file", () =>
                 this.requestFile(id),
             ),
@@ -134,7 +134,9 @@ export class OsuGateway implements IOsuGateway {
             this.requestBeatmapList(query),
         );
 
-        return list === undefined ? undefined : OsuGateway.firstStandard(list);
+        return list === undefined
+            ? undefined
+            : OsuGateway.findFirstStandard(list);
     }
 
     async tryGetBeatmapsetNow(
@@ -152,7 +154,7 @@ export class OsuGateway implements IOsuGateway {
         return list.length > 0 ? list : null;
     }
 
-    private static firstStandard(
+    private static findFirstStandard(
         list: readonly OsuAPIResponse[],
     ): OsuAPIResponse | null {
         const first = list.at(0);
@@ -170,7 +172,7 @@ export class OsuGateway implements IOsuGateway {
         lane: Lane,
         query: string,
     ): Promise<OsuAPIResponse[]> {
-        return this.shared(`${lane}:api:${query}`, () =>
+        return this.shareInFlight(`${lane}:api:${query}`, () =>
             this.options.rateLimiter.schedule(lane, "api", () =>
                 this.requestBeatmapList(query),
             ),
@@ -274,7 +276,7 @@ export class OsuGateway implements IOsuGateway {
         }
     }
 
-    private shared<T>(key: string, start: () => Promise<T>): Promise<T> {
+    private shareInFlight<T>(key: string, start: () => Promise<T>): Promise<T> {
         const existing = this.inFlight.get(key);
 
         if (existing) {
