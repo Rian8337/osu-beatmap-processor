@@ -1,5 +1,5 @@
 import { BeatmapFileStore } from "@/repositories/BeatmapFileStore";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -49,5 +49,49 @@ describe("BeatmapFileStore", () => {
 
         expect([a, b]).toContainEqual(stored);
         expect(await readdir(root)).toEqual(["75.osu"]);
+    });
+
+    it("rethrows read errors other than a missing file", async () => {
+        const store = new BeatmapFileStore({ beatmapFileDirectory: root });
+
+        await mkdir(join(root, "75.osu"));
+
+        await expect(store.read(75)).rejects.toMatchObject({ code: "EISDIR" });
+    });
+
+    it("leaves no temporary file when the rename fails", async () => {
+        const store = new BeatmapFileStore({ beatmapFileDirectory: root });
+
+        // A non-empty directory at the target makes rename fail.
+        await mkdir(join(root, "75.osu"));
+        await writeFile(join(root, "75.osu", "keep"), "");
+
+        await expect(store.write(75, Buffer.from("osu"))).rejects.toMatchObject(
+            {
+                code: "EISDIR",
+            },
+        );
+
+        expect(
+            (await readdir(root)).filter((name) => name.endsWith(".tmp")),
+        ).toEqual([]);
+    });
+
+    it("leaves no temporary file when writing the data fails partway", async () => {
+        const store = new BeatmapFileStore({ beatmapFileDirectory: root });
+
+        // writeFile accepts an async iterable: this one yields some bytes, then fails.
+        async function* partialThenFail(): AsyncGenerator<Buffer> {
+            yield Buffer.from("partial");
+            throw Object.assign(new Error("no space left on device"), {
+                code: "ENOSPC",
+            });
+        }
+
+        await expect(
+            store.write(75, partialThenFail() as unknown as Buffer),
+        ).rejects.toMatchObject({ code: "ENOSPC" });
+
+        expect(await readdir(root)).toEqual([]);
     });
 });

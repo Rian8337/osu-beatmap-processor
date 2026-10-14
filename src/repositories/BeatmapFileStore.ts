@@ -47,9 +47,8 @@ export class BeatmapFileStore implements IBeatmapFileStore {
         // A reader or a crash never sees a partial file: the rename replaces the file in one step.
         const temporary = `${target}.${randomBytes(6).toString("hex")}.tmp`;
 
-        await writeFile(temporary, data);
-
         try {
+            await writeFile(temporary, data);
             await rename(temporary, target);
         } catch (e) {
             await rm(temporary, { force: true });
