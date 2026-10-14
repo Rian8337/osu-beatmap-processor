@@ -57,7 +57,7 @@ describe("fix-dates", () => {
 
         expect(await beatmaps.findById(4)).toBeNull();
         expect(deps.output.lines.at(-1)).toBe(
-            "Done: 3 stored beatmaps checked, 2 corrected",
+            "Done: 3 stored beatmaps checked, 2 corrected, 0 skipped (file changed)",
         );
     });
 
@@ -91,7 +91,7 @@ describe("fix-dates", () => {
         );
         expect((await beatmaps.findById(3))?.approved).toBe(2);
         expect(deps.output.lines.at(-1)).toBe(
-            "Done: 1 stored beatmaps checked, 1 corrected",
+            "Done: 1 stored beatmaps checked, 1 corrected, 0 skipped (file changed)",
         );
     });
 
@@ -115,10 +115,10 @@ describe("fix-dates", () => {
         await runCli(["fix-dates", "--restart"], second);
 
         expect(first.output.lines.at(-1)).toBe(
-            "Done: 1 stored beatmaps checked, 1 corrected",
+            "Done: 1 stored beatmaps checked, 1 corrected, 0 skipped (file changed)",
         );
         expect(second.output.lines.at(-1)).toBe(
-            "Done: 1 stored beatmaps checked, 0 corrected",
+            "Done: 1 stored beatmaps checked, 0 corrected, 0 skipped (file changed)",
         );
     });
 
@@ -153,7 +153,43 @@ describe("fix-dates", () => {
 
         expect(osuGateway.calls).toHaveLength(2);
         expect(deps.output.lines.at(-1)).toBe(
-            "Done: 3 stored beatmaps checked, 3 corrected",
+            "Done: 3 stored beatmaps checked, 3 corrected, 0 skipped (file changed)",
+        );
+    });
+
+    it("leaves a stored row untouched, and counts it, when osu! reports a different file hash", async () => {
+        await using database = await createTestDatabase();
+        const beatmaps = new BeatmapRepository(database.db);
+        const pending = buildShiftedRow("1", "0");
+
+        await beatmaps.upsert([
+            { ...pending, fileMd5: "a".repeat(32) },
+            buildShiftedRow("2", "1"),
+        ]);
+
+        const osuGateway = new FakeOsuGateway().addBeatmaps(
+            buildApiBeatmap({
+                beatmap_id: "1",
+                approved: "1",
+                file_md5: "b".repeat(32),
+            }),
+            buildApiBeatmap({ beatmap_id: "2", approved: "1" }),
+        );
+        const deps = createCliDependencies(database.db, {
+            createOsuGateway: () => osuGateway,
+        });
+
+        expect(await runCli(["fix-dates"], deps)).toBe(0);
+
+        expect(await beatmaps.findById(1)).toEqual({
+            ...pending,
+            fileMd5: "a".repeat(32),
+        });
+        expect((await beatmaps.findById(2))?.submitDate).toEqual(
+            correctSubmitDate,
+        );
+        expect(deps.output.lines.at(-1)).toBe(
+            "Done: 2 stored beatmaps checked, 1 corrected, 1 skipped (file changed)",
         );
     });
 });

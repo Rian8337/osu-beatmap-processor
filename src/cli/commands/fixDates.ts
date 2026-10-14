@@ -18,7 +18,8 @@ const sameTime = (a: Date | null, b: Date | null) =>
 /**
  * Overwrites the dates and status of stored ranked, approved, and loved beatmaps with osu!'s (UTC) values. These rows
  * are never re-checked, so rows written in UTC+8 before the rewrite keep their wrong dates otherwise. Inserts
- * nothing; other rows heal at their next re-check.
+ * nothing; other rows heal at their next re-check, as do rows whose file osu! has changed (left untouched, counted
+ * as skipped).
  */
 export const fixDates: Command = (args) => {
     const { values, positionals } = parseArguments(args, {
@@ -30,7 +31,7 @@ export const fixDates: Command = (args) => {
     return async (deps) => {
         const config = deps.loadConfig();
         const beatmaps = new BeatmapRepository(deps.db);
-        const totals = { checked: 0, corrected: 0 };
+        const totals = { checked: 0, corrected: 0, changedFiles: 0 };
         // Overlapping pages deliver some beatmaps twice: count each once.
         const checkedIds = new Set<number>();
 
@@ -70,6 +71,13 @@ export const fixDates: Command = (args) => {
                             totals.checked++;
                         }
 
+                        // A stored row whose file osu! has since changed is stale: leave it for its normal re-check to
+                        // find, instead of freezing the old hash as ranked or loved.
+                        if (old.fileMd5 !== row.fileMd5) {
+                            totals.changedFiles++;
+                            continue;
+                        }
+
                         if (
                             old.approved === row.approved &&
                             sameTime(old.submitDate, row.submitDate) &&
@@ -101,7 +109,7 @@ export const fixDates: Command = (args) => {
         );
 
         deps.output.info(
-            `Done: ${totals.checked.toString()} stored beatmaps checked, ${totals.corrected.toString()} corrected`,
+            `Done: ${totals.checked.toString()} stored beatmaps checked, ${totals.corrected.toString()} corrected, ${totals.changedFiles.toString()} skipped (file changed)`,
         );
     };
 };
