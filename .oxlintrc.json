@@ -4,7 +4,7 @@
     "options": {
         "typeAware": true
     },
-    "ignorePatterns": ["legacy/**", "dist/**", "drizzle/**"],
+    "ignorePatterns": ["dist/**", "drizzle/**"],
     "rules": {
         "import/no-cycle": "error"
     },

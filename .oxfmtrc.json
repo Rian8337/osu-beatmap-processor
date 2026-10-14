@@ -3,5 +3,5 @@
     "tabWidth": 4,
     "printWidth": 80,
     "sortPackageJson": false,
-    "ignorePatterns": ["*.json", "*.yml", "*.yaml", "*.sql", "*.md", "dist/", "node_modules/", "legacy/", "drizzle/"]
+    "ignorePatterns": ["*.json", "*.yml", "*.yaml", "*.sql", "*.md", "dist/", "node_modules/", "drizzle/"]
 }
