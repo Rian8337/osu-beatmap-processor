@@ -23,7 +23,10 @@ export interface SinceWalkOptions {
     readonly command: string;
     /** Start from `walkStart` instead of the saved cursor. */
     readonly shouldRestart: boolean;
-    /** Handles one page; the cursor moves past the page only after this resolves. */
+    /**
+     * Handles one page; the cursor moves past the page only after this resolves. Pages overlap by their last second,
+     * so a beatmap can be delivered more than once: this must be idempotent.
+     */
     readonly processPage: (page: readonly OsuAPIResponse[]) => Promise<void>;
 }
 
@@ -55,6 +58,9 @@ export function computeNextCursor(
  * Walks every osu!standard beatmap approved since the saved cursor (ranked, approved, loved, and qualified), 500 per
  * osu! call on the bulk lane. A refused or rate-limited call waits out its `Retry-After` and is repeated; any other
  * failure stops the walk, and a rerun resumes from the saved cursor.
+ *
+ * @returns The number of pages and beatmaps handled. Because pages overlap, a beatmap can be delivered (and counted)
+ * more than once, so `beatmaps` includes repeats.
  */
 export async function walkSince(
     deps: SinceWalkDependencies,
@@ -100,14 +106,12 @@ export async function walkSince(
                 );
             }
 
-            const { next, skipped } = computeNextCursor(
-                cursor,
-                parseOsuDate(last.approved_date),
-            );
+            const lastApproved = parseOsuDate(last.approved_date);
+            const { next, skipped } = computeNextCursor(cursor, lastApproved);
 
             if (skipped) {
                 deps.output.info(
-                    `More than ${sincePageSize.toString()} beatmaps were approved at ${formatOsuDate(cursor)}; some may have been skipped`,
+                    `More than ${sincePageSize.toString()} beatmaps were approved at ${formatOsuDate(lastApproved)}; some may have been skipped`,
                 );
             }
 

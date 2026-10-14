@@ -160,7 +160,7 @@ describe("walkSince", () => {
         const { output, deps } = setup(...buildRankedBeatmaps(600, true));
         const seen = new Set<string>();
 
-        await walkSince(deps, {
+        const result = await walkSince(deps, {
             command: "test",
             shouldRestart: false,
             processPage: async (page) => {
@@ -173,6 +173,18 @@ describe("walkSince", () => {
         // osu! only ever lists the first 500 of that second; the walk ends instead of looping.
         expect(seen.size).toBe(500);
         expect(output.lines.join("\n")).toMatch(/may have been skipped/);
+        const crowdedSeconds = output.lines.filter((line) =>
+            line.includes("approved at"),
+        );
+
+        expect(crowdedSeconds.length).toBeGreaterThan(0);
+        expect(
+            crowdedSeconds.every((line) =>
+                line.includes(`approved at ${formatOsuDate(new Date(base))};`),
+            ),
+        ).toBe(true);
+        // The same 500 are delivered again on each overlapping page.
+        expect(result).toEqual({ pages: 4, beatmaps: 1500 });
     });
 
     it("keeps the cursor when a page fails, so a rerun repeats it", async () => {
@@ -192,7 +204,16 @@ describe("walkSince", () => {
         const { cursorRepository, output, sleep } = setup();
         const getBeatmapsSince = vi
             .fn<(lane: string, since: Date) => Promise<OsuAPIResponse[]>>()
-            .mockRejectedValue(new Error("bad response"));
+            .mockImplementation(() =>
+                // A broken guard retries the same error; the third time it looks like osu! being unavailable, so the walker
+                // sleeps, and the sleep below ends the otherwise endless loop with a distinct error.
+                getBeatmapsSince.mock.calls.length >= 3
+                    ? Promise.reject(new OsuUnavailableError(1))
+                    : Promise.reject(new Error("bad response")),
+            );
+        sleep.mockImplementation(() =>
+            Promise.reject(new Error("retried a non-osu!-unavailable error")),
+        );
 
         await expect(
             walkSince(
