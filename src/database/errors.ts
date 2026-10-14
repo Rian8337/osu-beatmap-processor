@@ -10,3 +10,16 @@ export class DatabaseUnavailableError extends ServiceUnavailableError {
         this.cause = cause;
     }
 }
+
+/**
+ * Runs a read query, turning a database failure into {@link DatabaseUnavailableError}.
+ */
+export async function readOrUnavailable<T>(
+    query: () => Promise<T>,
+): Promise<T> {
+    try {
+        return await query();
+    } catch (e) {
+        throw new DatabaseUnavailableError(e);
+    }
+}
