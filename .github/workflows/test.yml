@@ -27,6 +27,13 @@ jobs:
             # `pnpm lint` and `pnpm format` rewrite files; CI only checks.
             - run: pnpm exec oxlint --deny-warnings
             - run: pnpm exec oxfmt --check
+            # The migrations in `drizzle/` must match `src/database/schema.ts`: generating one must find nothing to do
+            # (it needs no database connection).
+            - name: Check the schema has no unmigrated changes
+              run: |
+                  pnpm exec drizzle-kit generate
+                  git diff --exit-code -- drizzle/
+                  test -z "$(git status --porcelain drizzle)"
 
     test:
         name: Tests
