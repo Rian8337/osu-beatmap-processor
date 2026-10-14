@@ -1,4 +1,5 @@
 import { dbBaseline } from "./commands/dbBaseline";
+import { fixDates } from "./commands/fixDates";
 import {
     createKey,
     listKeys,
@@ -6,6 +7,7 @@ import {
     showKey,
     updateKey,
 } from "./commands/key";
+import { populateCache } from "./commands/populateCache";
 import { CliError } from "./errors";
 import { describeFailure } from "./output";
 import type {
@@ -23,6 +25,11 @@ export const commands = new Map<string, CommandDefinition>([
     ["key show", { buildAction: showKey, requiresMigrations: true }],
     // Runs before any migration: it is what lets migrations run on a pre-rewrite database.
     ["db-baseline", { buildAction: dbBaseline, requiresMigrations: false }],
+    [
+        "populate-cache",
+        { buildAction: populateCache, requiresMigrations: true },
+    ],
+    ["fix-dates", { buildAction: fixDates, requiresMigrations: true }],
 ]);
 
 export const usage = `Usage: node dist/cli.mjs <command>
