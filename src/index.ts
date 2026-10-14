@@ -18,6 +18,9 @@ import {
 import { sql } from "drizzle-orm";
 import { fileURLToPath } from "node:url";
 
+// Long enough that a write still in progress is never touched.
+const staleTemporaryFileAgeMs = 5 * 60_000;
+
 async function main(): Promise<void> {
     // Kept for the process's whole lifetime, so never disposed. Installed first so every line carries the prefix.
     installLogPrefix("beatmap-service");
@@ -70,6 +73,17 @@ async function main(): Promise<void> {
         keys = keyService;
         console.log(`Loaded API keys: ${keyService.describeKeys()}`);
         resources.use(keyService.startReloading());
+
+        // Leftovers of writes that a crash cut short. Logs its own failures, so it never stops startup.
+        const removedTemporaryFiles = await container
+            .resolve(dependencyTokens.beatmapFileStore)
+            .removeStaleTemporaryFiles(staleTemporaryFileAgeMs);
+
+        if (removedTemporaryFiles > 0) {
+            console.log(
+                `Removed ${removedTemporaryFiles.toString()} stale temporary beatmap file(s)`,
+            );
+        }
 
         const server = resources.use(new GracefulServer());
         const port = await server.listen(

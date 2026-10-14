@@ -32,4 +32,9 @@ export class FakeBeatmapFileStore implements IBeatmapFileStore {
 
         this.files.delete(beatmapId);
     }
+
+    async removeStaleTemporaryFiles(): Promise<number> {
+        // Writes here are not temporary files, so there is never anything to remove.
+        return 0;
+    }
 }

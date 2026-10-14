@@ -2,7 +2,14 @@ import { createFakeOsuHandler } from "@test/fixtures/osu/fakeOsu";
 import { createGoldenOsuState } from "@test/fixtures/osu/beatmaps";
 import { startStubOsu } from "@test/utils/stubOsu";
 import { freePort, startProcess, startTestPostgres } from "@/server/testing";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import {
+    mkdtemp,
+    readdir,
+    readFile,
+    rm,
+    utimes,
+    writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -168,6 +175,45 @@ describe("dist/index.mjs", () => {
             );
 
             expect(beatmap.status).toBe(200);
+
+            server.child.kill("SIGTERM");
+
+            expect(await server.exited).toBe(0);
+        } finally {
+            await rm(directory, { recursive: true, force: true });
+        }
+    });
+
+    it("removes stale temporary beatmap files at startup and keeps fresh ones", async () => {
+        await using postgres = await startTestPostgres();
+        await using osu = await startStubOsu();
+        const directory = await mkdtemp(join(tmpdir(), "e2e-beatmaps-"));
+        const stale = "75.osu.0123456789ab.tmp";
+        const fresh = "76.osu.cdef01234567.tmp";
+        const hourAgo = new Date(Date.now() - 3_600_000);
+
+        osu.handle(createFakeOsuHandler(createGoldenOsuState()));
+
+        try {
+            await writeFile(join(directory, stale), "partial");
+            await utimes(join(directory, stale), hourAgo, hourAgo);
+            await writeFile(join(directory, fresh), "partial");
+
+            const { port, env } = await buildEnvironment(
+                postgres.port,
+                osu.url,
+                directory,
+            );
+            await using server = await startProcess({
+                script,
+                env,
+                readyUrl: `http://127.0.0.1:${port.toString()}/api/beatmap/health`,
+            });
+
+            expect(await readdir(directory)).toEqual([fresh]);
+            expect(server.output()).toContain(
+                "[beatmap-service] Removed 1 stale temporary beatmap file(s)",
+            );
 
             server.child.kill("SIGTERM");
 

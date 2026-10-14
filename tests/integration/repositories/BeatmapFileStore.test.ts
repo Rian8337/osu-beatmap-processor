@@ -1,10 +1,35 @@
 import { BeatmapFileStore } from "@/repositories/BeatmapFileStore";
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import {
+    mkdir,
+    mkdtemp,
+    readdir,
+    rm,
+    utimes,
+    writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { silenceConsoleErrors } from "@test/utils/silenceConsoleErrors";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 30_000 });
+
+const fiveMinutes = 5 * 60_000;
+
+/**
+ * Writes a file with the name of a store's temporary file, last modified `ageMs` ago.
+ */
+async function writeTemporaryFile(
+    directory: string,
+    name: string,
+    ageMs: number,
+): Promise<void> {
+    const path = join(directory, name);
+    const modified = new Date(Date.now() - ageMs);
+
+    await writeFile(path, "partial");
+    await utimes(path, modified, modified);
+}
 
 describe("BeatmapFileStore", () => {
     let root: string;
@@ -107,5 +132,102 @@ describe("BeatmapFileStore", () => {
         ).rejects.toMatchObject({ code: "ENOSPC" });
 
         expect(await readdir(root)).toEqual([]);
+    });
+
+    describe("removeStaleTemporaryFiles", () => {
+        it("removes temporary files older than the given age and keeps newer ones", async () => {
+            const store = new BeatmapFileStore({
+                beatmapFileDirectory: root,
+            });
+
+            await writeTemporaryFile(
+                root,
+                "75.osu.0123456789ab.tmp",
+                3_600_000,
+            );
+            await writeTemporaryFile(root, "76.osu.cdef01234567.tmp", 1_000);
+
+            expect(await store.removeStaleTemporaryFiles(fiveMinutes)).toBe(1);
+
+            expect(await readdir(root)).toEqual(["76.osu.cdef01234567.tmp"]);
+        });
+
+        it("keeps files that are not temporary files of the store, however old", async () => {
+            const store = new BeatmapFileStore({
+                beatmapFileDirectory: root,
+            });
+            const names = [
+                "75.osu",
+                "notes.tmp",
+                "75.osu.tmp",
+                "75.osu.0123456789ab.tmp.bak",
+                "75.osu.0123456789.tmp",
+                "75.osu.0123456789AB.tmp",
+            ];
+
+            for (const name of names) {
+                await writeTemporaryFile(root, name, 3_600_000);
+            }
+
+            expect(await store.removeStaleTemporaryFiles(fiveMinutes)).toBe(0);
+
+            expect((await readdir(root)).sort()).toEqual([...names].sort());
+        });
+
+        it("does nothing when the directory does not exist", async () => {
+            const logged = silenceConsoleErrors();
+            const store = new BeatmapFileStore({
+                beatmapFileDirectory: join(root, "missing"),
+            });
+
+            expect(await store.removeStaleTemporaryFiles(fiveMinutes)).toBe(0);
+            expect(logged).not.toHaveBeenCalled();
+        });
+
+        it("logs a failure to list the directory and does not throw", async () => {
+            const logged = silenceConsoleErrors();
+            // A file in place of the directory makes listing fail.
+            const path = join(root, "file");
+
+            await writeFile(path, "");
+
+            const store = new BeatmapFileStore({ beatmapFileDirectory: path });
+
+            expect(await store.removeStaleTemporaryFiles(fiveMinutes)).toBe(0);
+            expect(logged).toHaveBeenCalledOnce();
+            expect(logged.mock.calls[0]?.[1]).toContain("ENOTDIR");
+        });
+
+        it("logs a failure to delete one file and still removes the rest", async () => {
+            const logged = silenceConsoleErrors();
+            const store = new BeatmapFileStore({
+                beatmapFileDirectory: root,
+            });
+            const stuck = "75.osu.0123456789ab.tmp";
+
+            // A non-empty directory with a temporary file's name cannot be deleted as a file.
+            await mkdir(join(root, stuck));
+            await writeFile(join(root, stuck, "keep"), "");
+            await writeTemporaryFile(
+                root,
+                "76.osu.cdef01234567.tmp",
+                3_600_000,
+            );
+            await writeTemporaryFile(
+                root,
+                "77.osu.89abcdef0123.tmp",
+                3_600_000,
+            );
+
+            const old = new Date(Date.now() - 3_600_000);
+
+            await utimes(join(root, stuck), old, old);
+
+            expect(await store.removeStaleTemporaryFiles(fiveMinutes)).toBe(2);
+
+            expect(await readdir(root)).toEqual([stuck]);
+            expect(logged).toHaveBeenCalledOnce();
+            expect(logged.mock.calls[0]?.[0]).toContain(stuck);
+        });
     });
 });
