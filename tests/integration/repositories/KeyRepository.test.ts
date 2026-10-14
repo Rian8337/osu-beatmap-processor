@@ -67,6 +67,8 @@ describe("KeyRepository", () => {
                 lane: "fast" as "bulk",
                 rateLimitPerMinute: null,
             }),
-        ).rejects.toThrow(/insert into "api_keys"/);
+        ).rejects.toMatchObject({
+            cause: { code: "23514", constraint: "api_keys_lane_check" },
+        });
     });
 });

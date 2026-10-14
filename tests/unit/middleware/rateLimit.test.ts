@@ -76,4 +76,18 @@ describe("rate limit middleware", () => {
         await request(app).get("/").expect(429);
         expect(warn).not.toHaveBeenCalled();
     });
+
+    it("ignores X-Forwarded-For unless a proxy is trusted", async () => {
+        const app = createApp();
+
+        const first = await request(app)
+            .get("/")
+            .set("X-Forwarded-For", "10.0.0.1");
+        const second = await request(app)
+            .get("/")
+            .set("X-Forwarded-For", "10.0.0.2");
+
+        expect(first.status).toBe(200);
+        expect(second.status).toBe(429);
+    });
 });
