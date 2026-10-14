@@ -11,6 +11,12 @@ export interface DatabaseSettings {
     readonly name: string;
     readonly user: string;
     readonly password: string;
+
+    /**
+     * How long to wait for a connection, in milliseconds, before a query fails. This covers both opening a new
+     * connection and waiting for a free one when the pool is full. Defaults to 10 seconds.
+     */
+    readonly connectionTimeoutMs?: number;
 }
 
 /**
@@ -37,6 +43,8 @@ export class DatabaseConnection<
             database: settings.name,
             user: settings.user,
             password: settings.password,
+            // pg waits forever by default, so an unreachable or stalled server would hang every request.
+            connectionTimeoutMillis: settings.connectionTimeoutMs ?? 10_000,
         }),
     ) {
         this.pool = pool;
