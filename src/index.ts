@@ -75,13 +75,13 @@ async function main(): Promise<void> {
         resources.use(keyService.startReloading());
 
         // Leftovers of writes that a crash cut short. Logs its own failures, so it never stops startup.
-        const removedTemporaryFiles = await container
+        const removedTemporaryFileCount = await container
             .resolve(dependencyTokens.beatmapFileStore)
             .removeStaleTemporaryFiles(staleTemporaryFileAgeMs);
 
-        if (removedTemporaryFiles > 0) {
+        if (removedTemporaryFileCount > 0) {
             console.log(
-                `Removed ${removedTemporaryFiles.toString()} stale temporary beatmap file(s)`,
+                `Removed ${removedTemporaryFileCount.toString()} stale temporary beatmap file(s)`,
             );
         }
 

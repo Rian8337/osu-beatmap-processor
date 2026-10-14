@@ -2,6 +2,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OsuUnavailableError } from "@/osu/errors";
 import { RateLimiter, type RateLimiterOptions } from "@/osu/RateLimiter";
 
+const constructedOptions = vi.hoisted(() => [] as unknown[]);
+
+vi.mock("p-queue", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("p-queue")>();
+
+    // Behaves as the real queue and records the options it was built with.
+    const RecordingQueue = new Proxy(actual.default, {
+        construct(target, args: unknown[], newTarget) {
+            constructedOptions.push(args[0]);
+
+            return Reflect.construct(target, args, newTarget) as object;
+        },
+    });
+
+    return { ...actual, default: RecordingQueue };
+});
+
 const relaxed: RateLimiterOptions = {
     ratesPerMinute: { api: 60, file: 60, total: 60 },
     bulkShare: 0.5,
@@ -340,5 +357,20 @@ describe("RateLimiter", () => {
 
         expect(optional).toHaveBeenCalledTimes(1);
         expect(await result).toBe("checked");
+    });
+
+    it("builds every queue with a strict rolling window of one call", () => {
+        // A fixed window can start two calls closer than one interval when they fall either side of a window boundary
+        // (p-queue 10 still does, by up to a few milliseconds with real timers); strict mode never does. Fake timers
+        // run exact milliseconds and cannot reproduce that jitter, so the queue options are checked instead.
+        constructedOptions.length = 0;
+
+        new RateLimiter(relaxed);
+
+        expect(constructedOptions).toHaveLength(6);
+
+        for (const options of constructedOptions) {
+            expect(options).toMatchObject({ intervalCap: 1, strict: true });
+        }
     });
 });
