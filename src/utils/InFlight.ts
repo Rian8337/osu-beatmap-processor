@@ -1,6 +1,6 @@
 /**
  * Shares one pending operation per key: callers that ask for a key while its operation runs get the same promise.
- * The entry is removed once the operation settles, so a later call starts afresh.
+ * The entry is removed before the shared promise settles, so a caller that retries from its own rejection handler starts afresh.
  */
 export class InFlight<K, V> {
     private readonly pendingPromises = new Map<K, Promise<V>>();
@@ -16,19 +16,24 @@ export class InFlight<K, V> {
             return existing;
         }
 
-        // `async` turns a synchronous throw in `start` into a rejection.
-        const promise = (async () => start())();
+        let operation: Promise<V>;
 
-        this.pendingPromises.set(key, promise);
-        void promise
-            // The caller handles a rejection; this copy only waits for the promise to settle.
-            .catch(() => undefined)
-            .finally(() => {
-                if (this.pendingPromises.get(key) === promise) {
-                    this.pendingPromises.delete(key);
-                }
-            });
+        try {
+            operation = start();
+        } catch (error) {
+            // A synchronous throw never registers an entry, so there is nothing to clean up.
+            return Promise.reject(error);
+        }
 
-        return promise;
+        // The entry is deleted in the same chain that settles the shared promise, so it is gone before any caller resumes.
+        const shared: Promise<V> = operation.finally(() => {
+            if (this.pendingPromises.get(key) === shared) {
+                this.pendingPromises.delete(key);
+            }
+        });
+
+        this.pendingPromises.set(key, shared);
+
+        return shared;
     }
 }

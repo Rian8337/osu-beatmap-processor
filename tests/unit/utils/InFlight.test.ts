@@ -57,4 +57,72 @@ describe("InFlight", () => {
             ]),
         ).resolves.toEqual(["a", "b"]);
     });
+
+    it("lets a caller retry from a plain catch after an async rejection", async () => {
+        const inFlight = new InFlight<string, number>();
+        let starts = 0;
+        const start = () => {
+            starts++;
+
+            return starts === 1
+                ? Promise.reject(new Error("x"))
+                : Promise.resolve(2);
+        };
+        let retried: number | undefined;
+
+        try {
+            await inFlight.run("a", start);
+        } catch {
+            retried = await inFlight.run("a", start);
+        }
+
+        expect(starts).toBe(2);
+        expect(retried).toBe(2);
+    });
+
+    it("lets a caller retry from a plain catch after a synchronous throw", async () => {
+        const inFlight = new InFlight<string, number>();
+        let starts = 0;
+        const start = () => {
+            starts++;
+            if (starts === 1) {
+                throw new Error("sync");
+            }
+
+            return Promise.resolve(2);
+        };
+        let retried: number | undefined;
+
+        try {
+            await inFlight.run("a", start);
+        } catch {
+            retried = await inFlight.run("a", start);
+        }
+
+        expect(starts).toBe(2);
+        expect(retried).toBe(2);
+    });
+
+    it("gives concurrent callers of a failing run the same rejection, starting it once", async () => {
+        const inFlight = new InFlight<string, number>();
+        const error = new Error("x");
+        let starts = 0;
+        const start = () => {
+            starts++;
+
+            return Promise.reject(error);
+        };
+
+        const outcomes = await Promise.allSettled([
+            inFlight.run("a", start),
+            inFlight.run("a", start),
+        ]);
+
+        expect(outcomes).toEqual([
+            { status: "rejected", reason: error },
+            { status: "rejected", reason: error },
+        ]);
+        expect(starts).toBe(1);
+        expect(inFlight.size).toBe(0);
+    });
 });
