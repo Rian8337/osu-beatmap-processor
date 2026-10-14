@@ -77,10 +77,16 @@ describe("the app", () => {
 
         await test.database[Symbol.asyncDispose]();
 
+        const logged = silenceConsoleErrors();
         const down = await request(test.app).get("/api/beatmap/health");
 
         expect(down.status).toBe(503);
         expect(down.body).toEqual({ error: "Database unavailable" });
+        expect(logged).toHaveBeenCalledOnce();
+        expect(logged).toHaveBeenCalledWith(
+            "Health check failed:",
+            expect.any(String),
+        );
     });
 
     it("maps a database outage to 503 without asking osu!", async () => {
@@ -88,10 +94,15 @@ describe("the app", () => {
 
         await test.database[Symbol.asyncDispose]();
 
+        const logged = silenceConsoleErrors();
         const response = await request(test.app).get(
             `/api/beatmap/getbeatmap?id=75&${key}`,
         );
 
+        expect(logged).toHaveBeenCalledWith(
+            "Database read failed:",
+            expect.any(String),
+        );
         expect(response.status).toBe(503);
         expect(response.headers["retry-after"]).toBe("5");
         expect(response.body).toEqual({ error: "Database unavailable" });

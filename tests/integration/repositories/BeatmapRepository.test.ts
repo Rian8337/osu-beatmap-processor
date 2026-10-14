@@ -6,6 +6,7 @@ import { createTestDatabase } from "@test/utils/database";
 import { buildBeatmapRow } from "@test/utils/rows";
 import { getTableColumns } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
+import { silenceConsoleErrors } from "@test/utils/silenceConsoleErrors";
 
 vi.setConfig({ testTimeout: 30_000 });
 
@@ -119,6 +120,7 @@ describe("BeatmapRepository", () => {
         const repository = new BeatmapRepository(database.db);
 
         await database[Symbol.asyncDispose]();
+        silenceConsoleErrors();
 
         await expect(repository.findById(75)).rejects.toBeInstanceOf(
             DatabaseUnavailableError,

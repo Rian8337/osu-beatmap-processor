@@ -5,6 +5,7 @@ import { BeatmapsetRepository } from "@/repositories/BeatmapsetRepository";
 import { createTestDatabase } from "@test/utils/database";
 import { buildBeatmapRow } from "@test/utils/rows";
 import { describe, expect, it, vi } from "vitest";
+import { silenceConsoleErrors } from "@test/utils/silenceConsoleErrors";
 
 vi.setConfig({ testTimeout: 30_000 });
 
@@ -131,6 +132,7 @@ describe("BeatmapsetRepository", () => {
         const beatmapsetRepository = new BeatmapsetRepository(database.db);
 
         await database[Symbol.asyncDispose]();
+        silenceConsoleErrors();
 
         await expect(
             beatmapsetRepository.findLastChecked(1),

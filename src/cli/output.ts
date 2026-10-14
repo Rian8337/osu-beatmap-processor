@@ -1,7 +1,10 @@
 import { ConfigError } from "@/config/config";
 import { BaselineError } from "@/database/baseline";
+import {
+    DatabaseUnavailableError,
+    describeDatabaseFailure,
+} from "@/database/errors";
 import { DrizzleQueryError } from "drizzle-orm";
-import { getErrorMessage } from "@/utils/getErrorMessage";
 import type { CliOutput } from "./types";
 
 export const consoleOutput: CliOutput = {
@@ -15,7 +18,8 @@ export const reloadReminder =
 /**
  * Describes an unexpected failure for the operator. Only Drizzle's query error embeds the bound parameters of the failed
  * query (for example a key hash) in its message, so for that error only the driver's cause is shown, or a fixed
- * message if there is none. Any other error is shown as `name: message`.
+ * message if there is none. A failed service read shows its cause the same way. Any other error is shown as
+ * `name: message`.
  */
 export function describeFailure(error: unknown): string {
     if (error instanceof ConfigError || error instanceof BaselineError) {
@@ -23,9 +27,11 @@ export function describeFailure(error: unknown): string {
     }
 
     if (error instanceof DrizzleQueryError) {
-        return error.cause === undefined
-            ? "The database query failed"
-            : getErrorMessage(error.cause);
+        return describeDatabaseFailure(error);
+    }
+
+    if (error instanceof DatabaseUnavailableError) {
+        return `${error.message}: ${describeDatabaseFailure(error.cause)}`;
     }
 
     return error instanceof Error

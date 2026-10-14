@@ -1,3 +1,4 @@
+import { describeDatabaseFailure } from "@/database/errors";
 import { ServiceUnavailableError } from "@/server";
 import type { RequestHandler } from "express";
 
@@ -12,7 +13,9 @@ export function createHealthHandler(
         try {
             await ping();
             res.json({ status: "ok" });
-        } catch {
+        } catch (e) {
+            console.error("Health check failed:", describeDatabaseFailure(e));
+
             const error = new ServiceUnavailableError(
                 "Database unavailable",
                 5,

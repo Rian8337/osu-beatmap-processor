@@ -1,5 +1,6 @@
 import { describeFailure } from "@/cli/output";
 import { BaselineError } from "@/database/baseline";
+import { DatabaseUnavailableError } from "@/database/errors";
 import { DrizzleQueryError } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
@@ -22,6 +23,25 @@ describe("describeFailure", () => {
                 ),
             ),
         ).toBe("The database query failed");
+    });
+
+    it("shows the cause of a failed service read, but never a Drizzle query error's parameters", () => {
+        expect(
+            describeFailure(
+                new DatabaseUnavailableError(new Error("connection refused")),
+            ),
+        ).toBe("Database unavailable: connection refused");
+        expect(
+            describeFailure(
+                new DatabaseUnavailableError(
+                    new DrizzleQueryError(
+                        "select",
+                        ["secret-hash"],
+                        new Error("connection terminated"),
+                    ),
+                ),
+            ),
+        ).toBe("Database unavailable: connection terminated");
     });
 
     it("shows the name and message of any other error", () => {
