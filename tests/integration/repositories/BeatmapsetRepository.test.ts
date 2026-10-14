@@ -1,3 +1,5 @@
+import { DatabaseUnavailableError } from "@/database/errors";
+import type { BeatmapRow } from "@/database/types";
 import { BeatmapRepository } from "@/repositories/BeatmapRepository";
 import { BeatmapsetRepository } from "@/repositories/BeatmapsetRepository";
 import { createTestDatabase } from "@test/utils/database";
@@ -88,5 +90,50 @@ describe("BeatmapsetRepository", () => {
         expect(await beatmapsetRepository.deleteBeatmapset(1)).toEqual([75]);
         expect(await beatmaps.findByBeatmapsetId(1)).toEqual([]);
         expect(await beatmapsetRepository.findLastChecked(1)).toBeNull();
+    });
+
+    it("leaves the set untouched when replacing it fails partway", async () => {
+        await using database = await createTestDatabase();
+        const beatmaps = new BeatmapRepository(database.db);
+        const beatmapsetRepository = new BeatmapsetRepository(database.db);
+        const checkedAt = new Date("2026-10-11T00:00:00Z");
+
+        await beatmapsetRepository.replaceBeatmapset(
+            1,
+            [
+                buildBeatmapRow({ beatmap_id: "75" }),
+                buildBeatmapRow({ beatmap_id: "76" }),
+            ],
+            checkedAt,
+        );
+        const original = await beatmaps.findByBeatmapsetId(1);
+        const invalid = {
+            ...buildBeatmapRow({ beatmap_id: "77" }),
+            title: null,
+        } as unknown as BeatmapRow;
+
+        await expect(
+            beatmapsetRepository.replaceBeatmapset(
+                1,
+                [buildBeatmapRow({ beatmap_id: "75" }), invalid],
+                new Date("2026-10-12T00:00:00Z"),
+            ),
+        ).rejects.toBeInstanceOf(Error);
+
+        expect(await beatmaps.findByBeatmapsetId(1)).toEqual(original);
+        expect(await beatmapsetRepository.findLastChecked(1)).toEqual(
+            checkedAt,
+        );
+    });
+
+    it("turns a failed completeness read into DatabaseUnavailableError", async () => {
+        const database = await createTestDatabase();
+        const beatmapsetRepository = new BeatmapsetRepository(database.db);
+
+        await database[Symbol.asyncDispose]();
+
+        await expect(
+            beatmapsetRepository.findLastChecked(1),
+        ).rejects.toBeInstanceOf(DatabaseUnavailableError);
     });
 });

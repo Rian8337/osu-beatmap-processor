@@ -1,13 +1,49 @@
 import { DatabaseUnavailableError } from "@/database/errors";
+import { beatmapTable } from "@/database/schema";
+import type { BeatmapRow } from "@/database/types";
 import { BeatmapRepository } from "@/repositories/BeatmapRepository";
 import { createTestDatabase } from "@test/utils/database";
 import { buildBeatmapRow } from "@test/utils/rows";
+import { getTableColumns } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 30_000 });
 
 const hashA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const hashB = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+/**
+ * A row with the same ID whose every other column holds a different value, derived from the schema.
+ */
+function buildChangedRow(row: BeatmapRow): BeatmapRow {
+    const changed: Record<string, unknown> = { ...row };
+
+    for (const [key, column] of Object.entries(getTableColumns(beatmapTable))) {
+        if (column.primary) {
+            continue;
+        }
+
+        const value = changed[key];
+
+        if (key === "fileMd5") {
+            changed[key] = "d".repeat(32);
+        } else if (column.dataType === "number") {
+            changed[key] = typeof value === "number" ? value + 1 : 1;
+        } else if (column.dataType === "string") {
+            changed[key] = typeof value === "string" ? `${value}x` : "x";
+        } else if (column.dataType === "boolean") {
+            changed[key] = value !== true;
+        } else if (column.dataType === "date") {
+            changed[key] = new Date(
+                (value instanceof Date ? value.getTime() : 0) + 86_400_000,
+            );
+        } else {
+            throw new Error(`Unhandled column type for ${key}`);
+        }
+    }
+
+    return changed as BeatmapRow;
+}
 
 describe("BeatmapRepository", () => {
     it("stores and finds beatmaps by id, hash, ids, and set", async () => {
@@ -50,6 +86,19 @@ describe("BeatmapRepository", () => {
         });
     });
 
+    it("replaces all non-key columns of an existing row", async () => {
+        await using database = await createTestDatabase();
+        const repository = new BeatmapRepository(database.db);
+        const first = buildBeatmapRow();
+        const second = buildChangedRow(first);
+
+        await repository.upsert([first]);
+        await repository.upsert([second]);
+
+        expect(second).not.toEqual(first);
+        expect(await repository.findById(first.beatmapId)).toEqual(second);
+    });
+
     it("updates and deletes", async () => {
         await using database = await createTestDatabase();
         const repository = new BeatmapRepository(database.db);
@@ -72,6 +121,12 @@ describe("BeatmapRepository", () => {
         await database[Symbol.asyncDispose]();
 
         await expect(repository.findById(75)).rejects.toBeInstanceOf(
+            DatabaseUnavailableError,
+        );
+        await expect(repository.findByHash(hashA)).rejects.toBeInstanceOf(
+            DatabaseUnavailableError,
+        );
+        await expect(repository.findByIds([75])).rejects.toBeInstanceOf(
             DatabaseUnavailableError,
         );
         await expect(repository.findByBeatmapsetId(1)).rejects.toBeInstanceOf(
