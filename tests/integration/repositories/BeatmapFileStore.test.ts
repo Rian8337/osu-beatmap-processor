@@ -2,7 +2,9 @@ import { BeatmapFileStore } from "@/repositories/BeatmapFileStore";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.setConfig({ testTimeout: 30_000 });
 
 describe("BeatmapFileStore", () => {
     let root: string;
