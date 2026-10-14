@@ -2,7 +2,7 @@ import { beatmapTable } from "@/database/schema";
 import type { BeatmapRow, Database } from "@/database/types";
 import { getTableColumns, sql } from "drizzle-orm";
 
-const replaceEveryColumn = Object.fromEntries(
+const replacementColumns = Object.fromEntries(
     Object.entries(getTableColumns(beatmapTable))
         .filter(([, column]) => !column.primary)
         .map(([key, column]) => [key, sql.raw(`excluded."${column.name}"`)]),
@@ -27,6 +27,6 @@ export async function upsertBeatmaps(
         .values([...rows])
         .onConflictDoUpdate({
             target: beatmapTable.beatmapId,
-            set: replaceEveryColumn,
+            set: replacementColumns,
         });
 }

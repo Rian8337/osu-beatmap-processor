@@ -12,7 +12,7 @@ const neverRechecked = new Set<number>([
     RankedStatus.Loved,
 ]);
 
-const sameTime = (a: Date | null, b: Date | null) =>
+const isSameTime = (a: Date | null, b: Date | null) =>
     a?.getTime() === b?.getTime();
 
 /**
@@ -80,9 +80,9 @@ export const fixDates: Command = (args) => {
 
                         if (
                             old.approved === row.approved &&
-                            sameTime(old.submitDate, row.submitDate) &&
-                            sameTime(old.approvedDate, row.approvedDate) &&
-                            sameTime(old.lastUpdate, row.lastUpdate)
+                            isSameTime(old.submitDate, row.submitDate) &&
+                            isSameTime(old.approvedDate, row.approvedDate) &&
+                            isSameTime(old.lastUpdate, row.lastUpdate)
                         ) {
                             continue;
                         }

@@ -27,7 +27,8 @@ interface CachedSet {
     readonly lastChecked: Date;
 }
 
-const byBeatmapId = (a: BeatmapRow, b: BeatmapRow) => a.beatmapId - b.beatmapId;
+const compareByBeatmapId = (a: BeatmapRow, b: BeatmapRow) =>
+    a.beatmapId - b.beatmapId;
 
 /**
  * Whole beatmapsets. The memory cache may serve a set for up to its lifetime after a single-beatmap lookup found one
@@ -75,11 +76,11 @@ export class BeatmapsetService implements IBeatmapsetService {
         beatmapsetId: number,
     ): Promise<readonly BeatmapRow[] | null> {
         return this.pendingLookups.run(beatmapsetId, () =>
-            this.lookup(lane, beatmapsetId),
+            this.lookUp(lane, beatmapsetId),
         );
     }
 
-    private async lookup(
+    private async lookUp(
         lane: Lane,
         beatmapsetId: number,
     ): Promise<readonly BeatmapRow[] | null> {
@@ -178,7 +179,7 @@ export class BeatmapsetService implements IBeatmapsetService {
         const fresh = responses
             .filter((response) => response.mode === "0")
             .map((response) => convertApiResponseToRow(response, checkedAt))
-            .sort(byBeatmapId);
+            .sort(compareByBeatmapId);
 
         const { rows, stale } = await this.commitBeatmapset(
             beatmapsetId,

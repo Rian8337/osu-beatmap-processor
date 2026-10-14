@@ -62,7 +62,7 @@ export class BeatmapService implements IBeatmapService {
                 : `hash:${reference.hash}`;
 
         // Shared regardless of lane: a second caller waits for the first instead of spending budget.
-        return this.pendingLookups.run(key, () => this.lookup(lane, reference));
+        return this.pendingLookups.run(key, () => this.lookUp(lane, reference));
     }
 
     async refreshBeatmap(
@@ -115,7 +115,7 @@ export class BeatmapService implements IBeatmapService {
         this.beatmapsByHash.delete(row.fileMd5);
     }
 
-    private async lookup(
+    private async lookUp(
         lane: Lane,
         reference: BeatmapReference,
     ): Promise<BeatmapRow | null> {
