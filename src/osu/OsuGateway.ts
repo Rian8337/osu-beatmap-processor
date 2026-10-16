@@ -1,12 +1,17 @@
+import { formatOsuDate } from "@/beatmaps/converter";
+import { dependencyTokens } from "@/dependencies/tokens";
+import { Injectable } from "@/server";
 import type { OsuAPIResponse } from "@rian8337/osu-base";
-import { OsuUnavailableError, type Lane, type RequestKind } from "./errors.js";
-import type { RateLimiter } from "./RateLimiter.js";
+import { inject } from "tsyringe";
+import { OsuUnavailableError, type Lane, type RequestKind } from "./errors";
+import type { IOsuGateway } from "./IOsuGateway";
+import type { RateLimiter } from "./RateLimiter";
 
 export interface OsuGatewayOptions {
     readonly apiKey: string;
     readonly apiBaseUrl: string;
     readonly fileBaseUrl: string;
-    readonly limiter: RateLimiter;
+    readonly rateLimiter: RateLimiter;
 
     /**
      * Defaults to 10 000.
@@ -28,6 +33,11 @@ const maxRetryAfterSeconds = 3600;
  * Pause after a `429` without a `Retry-After` header.
  */
 const defaultRateLimitPauseSeconds = 60;
+
+/**
+ * The most beatmaps osu! API v1 returns per `get_beatmaps` call.
+ */
+export const sincePageSize = 500;
 
 type Outcome<T> =
     | { readonly kind: "ok"; readonly value: T }
@@ -67,11 +77,15 @@ function isBeatmapList(body: unknown): body is OsuAPIResponse[] {
  * The only code that calls osu!. Each operation is exactly one request through the rate limiter: no retries.
  * Concurrent calls in the same lane for the same thing share one request.
  */
-export class OsuGateway {
+@Injectable(dependencyTokens.osuGateway)
+export class OsuGateway implements IOsuGateway {
     private readonly timeoutMs: number;
     private readonly inFlight = new Map<string, Promise<unknown>>();
 
-    constructor(private readonly options: OsuGatewayOptions) {
+    constructor(
+        @inject(dependencyTokens.osuGatewayOptions)
+        private readonly options: OsuGatewayOptions,
+    ) {
         this.timeoutMs = options.timeoutMs ?? 10_000;
     }
 
@@ -84,7 +98,7 @@ export class OsuGateway {
             this.beatmapQuery(idOrHash),
         );
 
-        return OsuGateway.firstStandard(list);
+        return OsuGateway.findFirstStandard(list);
     }
 
     async getBeatmapset(
@@ -96,9 +110,16 @@ export class OsuGateway {
         return list.length > 0 ? list : null;
     }
 
+    getBeatmapsSince(lane: Lane, since: Date): Promise<OsuAPIResponse[]> {
+        return this.getBeatmapList(
+            lane,
+            `since=${encodeURIComponent(formatOsuDate(since))}&m=0&limit=${sincePageSize.toString()}`,
+        );
+    }
+
     downloadFile(lane: Lane, id: number): Promise<Buffer | null> {
-        return this.shared(`${lane}:file:${id.toString()}`, () =>
-            this.options.limiter.schedule(lane, "file", () =>
+        return this.shareInFlight(`${lane}:file:${id.toString()}`, () =>
+            this.options.rateLimiter.schedule(lane, "file", () =>
                 this.requestFile(id),
             ),
         );
@@ -109,14 +130,31 @@ export class OsuGateway {
         idOrHash: number | string,
     ): Promise<OsuAPIResponse | null | undefined> {
         const query = this.beatmapQuery(idOrHash);
-        const list = await this.options.limiter.tryNow(lane, "api", () =>
+        const list = await this.options.rateLimiter.tryNow(lane, "api", () =>
             this.requestBeatmapList(query),
         );
 
-        return list === undefined ? undefined : OsuGateway.firstStandard(list);
+        return list === undefined
+            ? undefined
+            : OsuGateway.findFirstStandard(list);
     }
 
-    private static firstStandard(
+    async tryGetBeatmapsetNow(
+        lane: Lane,
+        id: number,
+    ): Promise<OsuAPIResponse[] | null | undefined> {
+        const list = await this.options.rateLimiter.tryNow(lane, "api", () =>
+            this.requestBeatmapList(`s=${id.toString()}`),
+        );
+
+        if (list === undefined) {
+            return undefined;
+        }
+
+        return list.length > 0 ? list : null;
+    }
+
+    private static findFirstStandard(
         list: readonly OsuAPIResponse[],
     ): OsuAPIResponse | null {
         const first = list.at(0);
@@ -134,8 +172,8 @@ export class OsuGateway {
         lane: Lane,
         query: string,
     ): Promise<OsuAPIResponse[]> {
-        return this.shared(`${lane}:api:${query}`, () =>
-            this.options.limiter.schedule(lane, "api", () =>
+        return this.shareInFlight(`${lane}:api:${query}`, () =>
+            this.options.rateLimiter.schedule(lane, "api", () =>
                 this.requestBeatmapList(query),
             ),
         );
@@ -224,7 +262,9 @@ export class OsuGateway {
                 console.warn(
                     `osu! rate limited ${redact(url)}; pausing all requests for ${outcome.retryAfterSeconds.toString()} s`,
                 );
-                this.options.limiter.pauseFor(outcome.retryAfterSeconds * 1000);
+                this.options.rateLimiter.pauseFor(
+                    outcome.retryAfterSeconds * 1000,
+                );
 
                 throw new OsuUnavailableError(outcome.retryAfterSeconds);
             case "failed":
@@ -236,7 +276,7 @@ export class OsuGateway {
         }
     }
 
-    private shared<T>(key: string, start: () => Promise<T>): Promise<T> {
+    private shareInFlight<T>(key: string, start: () => Promise<T>): Promise<T> {
         const existing = this.inFlight.get(key);
 
         if (existing) {

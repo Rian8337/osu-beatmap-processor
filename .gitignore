@@ -1,6 +1,9 @@
 dist
 node_modules
+coverage
 .env
+.env.*
 
 # Beatmap files
-beatmaps
+/beatmaps
+!.env.example

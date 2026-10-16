@@ -1,24 +1,53 @@
-name: Tests
+name: CI
+
 on: [push, pull_request]
+
+permissions:
+    contents: read
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
 jobs:
-  lint:
-    name: Transpilation
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+    check:
+        name: Typecheck, lint, and format
+        runs-on: ubuntu-latest
+        timeout-minutes: 15
+        steps:
+            - uses: actions/checkout@v7
+            # Reads the version from `packageManager` in package.json.
+            - uses: pnpm/action-setup@v6
+            - uses: actions/setup-node@v6
+              with:
+                  node-version: 24
+                  cache: pnpm
+            - run: pnpm install --frozen-lockfile
+            - run: pnpm typecheck
+            # `pnpm lint` and `pnpm format` rewrite files; CI only checks.
+            - run: pnpm exec oxlint --deny-warnings
+            - run: pnpm exec oxfmt --check
+            # The migrations in `drizzle/` must match `src/database/schema.ts`: generating one must find nothing to do
+            # (it needs no database connection).
+            - name: Check the schema has no unmigrated changes
+              run: |
+                  pnpm exec drizzle-kit generate
+                  git diff --exit-code -- drizzle/
+                  test -z "$(git status --porcelain drizzle)"
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6
-
-      - name: Install Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Type Check
-        run: tsc --noEmit
+    test:
+        name: Tests
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+        env:
+            CI: "1"
+        steps:
+            - uses: actions/checkout@v7
+            - uses: pnpm/action-setup@v6
+            - uses: actions/setup-node@v6
+              with:
+                  node-version: 24
+                  cache: pnpm
+            - run: pnpm install --frozen-lockfile
+            - run: pnpm test
+            - run: pnpm test:e2e
